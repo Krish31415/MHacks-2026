@@ -1,0 +1,40 @@
+{
+  "name": "wallet-sports-desk",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Checkout Critics - two AI sports commentators call your bank account like a championship game.",
+  "scripts": {
+    "dev": "node node_modules/concurrently/dist/bin/index.js -n server,client -c magenta,cyan \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node node_modules/tsx/dist/cli.mjs watch server/index.ts",
+    "dev:client": "node node_modules/vite/bin/vite.js",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "build": "npm run typecheck && node node_modules/vite/bin/vite.js build",
+    "start": "NODE_ENV=production node node_modules/tsx/dist/cli.mjs server/index.ts",
+    "test": "node node_modules/tsx/dist/cli.mjs --test shared/stats.test.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.27.0",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "protobufjs@7.6.6": true
+  }
+}
