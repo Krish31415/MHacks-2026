@@ -4,27 +4,29 @@ import type {
   BroadcastMode,
   CommentaryLine,
   CommentaryResponse,
+  FinalReview,
   Speaker,
   Stats,
   Transaction,
+  Verdict,
 } from "../shared/types";
 import { formatMoney, round2 } from "../shared/stats";
-import { cannedCommentary, cannedMode } from "./canned";
+import { cannedFinalReview, cannedFor, cannedVerdictsFor } from "./canned";
 import { GEMINI_API_KEY, GEMINI_MODEL, geminiConfigured } from "./env";
 
 /**
  * The writing room. We hand Gemini real, already-computed numbers and a strict
- * JSON schema, and it returns 2-4 commentator lines plus a TV lower-third.
+ * JSON schema, and it returns 2-4 commentator lines, critic verdicts, and a
+ * TV lower-third. Spec section 9 system prompt is used verbatim.
  *
- * Everything is defensive: if the key is missing, the call throws, or the JSON
- * is unusable, we fall back to canned lines. The broadcast never dies.
+ * Everything is defensive: missing key, throw, or unusable JSON -> canned.
  */
 
-const SYSTEM_PROMPT = `You are the writing room for a two-person sports broadcast covering one person's bank account as if it were a championship game.
+const SYSTEM_PROMPT = `You are the writing room for a two-person sports broadcast in which the hosts are also movie-style critics. They cover one person's bank account as if it were a championship game, and they review every purchase out loud.
 
 THE BOOTH
-- PBP: "Big Mike Donovan", play-by-play announcer. Loud, breathless, treats every purchase like a game-winning drive. Uses sports cliches constantly.
-- COLOR: "Linda Park", color commentator and former pro. Dry, analytical, brutally honest, drops stat callouts, quietly devastated by the user's decisions.
+- PBP: "Big Mike Donovan", play-by-play announcer. Loud, breathless, treats every purchase like a game-winning drive. Uses sports cliches constantly. Generous with scores and easily impressed.
+- COLOR: "Linda Park", color commentator and former pro. Dry, analytical, brutally honest, drops stat callouts, quietly devastated by the user's decisions. Harsh with scores.
 
 RULES
 - Output ONLY JSON matching the schema.
@@ -36,15 +38,18 @@ RULES
 - "intensity" 1 to 5: bigger purchases and streaks get higher intensity.
 - "chyron" is a short ALL CAPS on-screen graphic (max 8 words) summarizing the play, like a TV broadcast lower-third.
 
-MODES
-- play: react live to the given purchase(s).
-- halftime: summarize the biggest trends so far using the stats object, like a halftime report.
-- postgame: wrap up the entire session, give a final score (final balance), an MVP (worst purchase), and a closing roast.`;
+CRITIC VERDICTS
+- In "play" mode you must return exactly one verdict for every play provided, giving each critic an integer score from 0 to 10.
+- Score the PURCHASE, not the person. Use judgment: essentials and good value score high, impulse buys, repeat food delivery, and unused subscriptions score low, a late night order scores lowest.
+- The critics should disagree by at least 3 points about a third of the time, and the dialogue should react to the disagreement ("Mike, you gave that a 7?").
+- Mention at least one score out loud in the dialogue, written as a normal number ("I'm giving that a 2"). Scores in the dialogue MUST match the scores in the verdicts.
+- You may reference "criticsAverage" if it is provided.
 
-/**
- * Response schema for JSON mode. Gemini's structured output supports a subset of
- * JSON Schema, so this stays to plain objects/strings/integers/arrays.
- */
+MODES
+- play: react live to the given purchase(s) and return verdicts.
+- halftime: summarize the biggest trends so far using the stats object, like a halftime report. Return an empty verdicts array and no finalReview.
+- postgame: wrap up the entire session. Give a final score (final balance), an MVP (worst purchase), and a closing roast. Return an empty verdicts array AND a finalReview: a score from each critic for the whole run and a pullQuote written like a movie poster blurb (style example: "A devastating portrait of a man and his DoorDash app."). Deliver the final scores in the dialogue like a film review show ending, including a thumbs verdict ("two thumbs down").`;
+
 const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
@@ -53,32 +58,57 @@ const RESPONSE_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          speaker: {
-            type: Type.STRING,
-            enum: ["PBP", "COLOR"],
-            description: 'Which commentator is talking. "PBP" or "COLOR".',
-          },
-          text: {
-            type: Type.STRING,
-            description: "The spoken line. Maximum 25 words.",
-          },
-          intensity: {
-            type: Type.INTEGER,
-            description:
-              "1 (mild) to 5 (unhinged). Drives screen shake and crowd effects.",
-          },
+          speaker: { type: Type.STRING, enum: ["PBP", "COLOR"], description: '"PBP" or "COLOR".' },
+          text: { type: Type.STRING, description: "Spoken line. Max 25 words." },
+          intensity: { type: Type.INTEGER, description: "1 (mild) to 5 (unhinged)." },
         },
         required: ["speaker", "text", "intensity"],
         propertyOrdering: ["speaker", "text", "intensity"],
       },
     },
-    chyron: {
-      type: Type.STRING,
-      description: "Short ALL CAPS lower-third graphic. Maximum 8 words.",
+    chyron: { type: Type.STRING, description: "Short ALL CAPS lower-third. Max 8 words." },
+    verdicts: {
+      type: Type.ARRAY,
+      description: 'One verdict per play in "play" mode (else []).',
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          playId: { type: Type.STRING, description: "Copy the play id exactly." },
+          scores: {
+            type: Type.OBJECT,
+            properties: {
+              PBP: { type: Type.INTEGER, description: "Mike 0-10." },
+              COLOR: { type: Type.INTEGER, description: "Linda 0-10." },
+            },
+            required: ["PBP", "COLOR"],
+            propertyOrdering: ["PBP", "COLOR"],
+          },
+        },
+        required: ["playId", "scores"],
+        propertyOrdering: ["playId", "scores"],
+      },
+    },
+    finalReview: {
+      type: Type.OBJECT,
+      description: 'Only "postgame": whole-run scores + pullQuote.',
+      properties: {
+        scores: {
+          type: Type.OBJECT,
+          properties: {
+            PBP: { type: Type.INTEGER, description: "Mike whole-run 0-10." },
+            COLOR: { type: Type.INTEGER, description: "Linda whole-run 0-10." },
+          },
+          required: ["PBP", "COLOR"],
+          propertyOrdering: ["PBP", "COLOR"],
+        },
+        pullQuote: { type: Type.STRING, description: "Movie-poster blurb, max 20 words." },
+      },
+      required: ["scores", "pullQuote"],
+      propertyOrdering: ["scores", "pullQuote"],
     },
   },
-  required: ["lines", "chyron"],
-  propertyOrdering: ["lines", "chyron"],
+  required: ["lines", "chyron", "verdicts"],
+  propertyOrdering: ["lines", "chyron", "verdicts", "finalReview"],
 };
 
 let client: GoogleGenAI | null = null;
@@ -87,113 +117,110 @@ function getClient(): GoogleGenAI {
   return client;
 }
 
-/** Cheap, stable, dependency-free string hash. Good enough for a cache key. */
 function hash(input: string): string {
   let h = 5381;
-  for (let i = 0; i < input.length; i++) {
-    h = ((h << 5) + h + input.charCodeAt(i)) | 0;
-  }
+  for (let i = 0; i < input.length; i++) h = ((h << 5) + h + input.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
 }
-/** Renders the real numbers we computed ourselves into a compact prompt block. */
-function buildPrompt(
-  plays: Transaction[],
-  stats: Stats,
-  mode: BroadcastMode,
-): string {
-  const playLines = plays.map(
-    (p) =>
-      `- ${p.merchant} | ${formatMoney(p.amount)} | category: ${p.category}` +
-      (p.description ? ` | note: ${p.description}` : ""),
-  );
 
-  // Real, computed facts. The model must not do arithmetic on these.
-  const biggest = stats.biggestPlay
-    ? `${stats.biggestPlay.merchant} at ${formatMoney(stats.biggestPlay.amount)}`
-    : "none yet";
-
-  return `BROADCAST SEGMENT
-MODE: ${mode}
-PLAYS TO COVER (${plays.length}):
-${playLines.length ? playLines.join("\n") : "- (no specific plays, use the stats)"}
-
-COMPUTED STATS (these are the only numbers you may quote):
-- Starting balance: ${formatMoney(stats.startingBalance)}
-- Current balance (the score): ${formatMoney(stats.currentBalance)}
-- Total spent (the bank is winning by): ${formatMoney(stats.totalSpent)}
-- Plays so far: ${stats.playsCount}
-- Food delivery streak (consecutive, most recent): ${stats.foodDeliveryStreak}
-- Biggest play: ${biggest}
-- Subscription turnovers: ${stats.subscriptionsCount}
-- Spend by category: ${JSON.stringify(stats.byCategory)}
-
-Write the segment now. Quote real numbers. Roast the spending, not the person.`;
+function clampScore(n: unknown): number {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(10, Math.round(v)));
 }
 
 function capWords(text: string, maxWords: number): string {
   const words = text.split(/\s+/);
-  if (words.length <= maxWords) return text;
-  return words.slice(0, maxWords).join(" ").replace(/[,;:]$/, "") + ".";
+  return words.length <= maxWords ? text : words.slice(0, maxWords).join(" ");
 }
 
-/** Defensive validation: never trust model output, even with a schema. */
-function parseCommentary(raw: string): CommentaryResponse | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
+/** Real computed numbers rendered into a compact prompt block. Never LLM math. */
+function buildPrompt(plays: Transaction[], stats: Stats, mode: BroadcastMode): string {
+  const playsBlock = plays.length === 0
+    ? "No individual plays this segment; react to the season stats below."
+    : plays.map((p, i) => `Play ${i + 1} (id "${p.id}"): ${p.merchant}, ${formatMoney(p.amount)}, category ${p.category}.`).join("\n");
+  const avg = stats.criticsAverage == null ? "none yet (first review)" : `${stats.criticsAverage.toFixed(1)} out of 10`;
+  const biggest = stats.biggestPlay ? `${stats.biggestPlay.merchant} ${formatMoney(stats.biggestPlay.amount)}` : "none yet";
+  const tail = mode === "play"
+    ? "Return exactly one verdict per play above, in the same order, with playId copied exactly."
+    : mode === "halftime"
+      ? "Return verdicts as an empty array and no finalReview."
+      : "Return verdicts as an empty array AND a finalReview with both critics scores plus a pullQuote (max 20 words).";
+  return [
+    `Cover ${plays.length} play(s) in mode "${mode}".`,
+    "Plays:",
+    playsBlock,
+    `Stats: starting balance ${formatMoney(stats.startingBalance)}, current balance ${formatMoney(stats.currentBalance)}, total spent ${formatMoney(stats.totalSpent)} across ${stats.playsCount} plays.`,
+    `Food delivery streak: ${stats.foodDeliveryStreak}. Subscription turnovers: ${stats.subscriptionsCount}. Biggest play so far: ${biggest}. Critics average so far: ${avg}.`,
+    tail,
+  ].join("\n");
+}
 
-  const obj = parsed as Partial<CommentaryResponse>;
-  if (!obj || !Array.isArray(obj.lines) || obj.lines.length === 0) return null;
-
+function parseLines(obj: Record<string, unknown>): CommentaryLine[] | null {
+  if (!Array.isArray(obj.lines)) return null;
   const lines: CommentaryLine[] = [];
-  for (const entry of obj.lines.slice(0, 4)) {
+  for (const entry of (obj.lines as unknown[]).slice(0, 4)) {
     if (!entry || typeof entry !== "object") continue;
     const { speaker, text, intensity } = entry as Partial<CommentaryLine>;
     if (typeof text !== "string" || text.trim() === "") continue;
-
-    // Never let it name a speaker the TTS route has no voice for.
-    const normalizedSpeaker: Speaker =
-      String(speaker).toUpperCase() === "COLOR" ? "COLOR" : "PBP";
-
-    const rawIntensity = Number(intensity);
-    const clamped = Number.isFinite(rawIntensity)
-      ? Math.max(1, Math.min(5, Math.round(rawIntensity)))
-      : 3;
-
-    lines.push({
-      speaker: normalizedSpeaker,
-      // Word cap keeps TTS snappy so the broadcast keeps its pacing.
-      text: capWords(text.trim(), 30),
-      intensity: clamped as CommentaryLine["intensity"],
-    });
+    const normalizedSpeaker: Speaker = String(speaker).toUpperCase() === "COLOR" ? "COLOR" : "PBP";
+    const raw = Number(intensity);
+    const clamped = Number.isFinite(raw) ? Math.max(1, Math.min(5, Math.round(raw))) : 3;
+    lines.push({ speaker: normalizedSpeaker, text: capWords(text.trim(), 30), intensity: clamped as CommentaryLine["intensity"] });
   }
-
   if (lines.length === 0) return null;
-
-  // Guarantee the alternation the booth's visuals depend on.
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i].speaker === lines[i - 1].speaker) {
-      lines[i].speaker = lines[i - 1].speaker === "PBP" ? "COLOR" : "PBP";
-    }
+    if (lines[i].speaker === lines[i - 1].speaker) lines[i].speaker = lines[i - 1].speaker === "PBP" ? "COLOR" : "PBP";
   }
-
-  const chyron =
-    typeof obj.chyron === "string" && obj.chyron.trim()
-      ? obj.chyron.trim().toUpperCase().slice(0, 60)
-      : "LIVE SPENDING";
-
-  return { lines, chyron };
+  return lines;
 }
 
+function parseVerdicts(obj: Record<string, unknown>, plays: Transaction[]): Verdict[] {
+  const raw = Array.isArray(obj.verdicts) ? (obj.verdicts as unknown[]) : [];
+  const out: Verdict[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const { playId, scores } = entry as { playId?: unknown; scores?: { PBP?: unknown; COLOR?: unknown } };
+    if (typeof playId !== "string" || !scores || typeof scores !== "object") continue;
+    out.push({ playId, scores: { PBP: clampScore(scores.PBP), COLOR: clampScore(scores.COLOR) } });
+  }
+  // Keep exactly one verdict per requested play, in order: drop extras, fill gaps canned.
+  const byId = new Map(out.map((v) => [v.playId, v]));
+  return plays.map((p) => byId.get(p.id) ?? cannedVerdictsFor([p])[0]);
+}
 
-async function callGemini(
-  plays: Transaction[],
-  stats: Stats,
-  mode: BroadcastMode,
-): Promise<CommentaryResponse | null> {
+function parseFinalReview(obj: Record<string, unknown>): FinalReview | undefined {
+  const fr = obj.finalReview;
+  if (!fr || typeof fr !== "object") return undefined;
+  const { scores, pullQuote } = fr as { scores?: { PBP?: unknown; COLOR?: unknown }; pullQuote?: unknown };
+  if (!scores || typeof scores !== "object") return undefined;
+  return {
+    scores: { PBP: clampScore(scores.PBP), COLOR: clampScore(scores.COLOR) },
+    pullQuote: typeof pullQuote === "string" && pullQuote.trim() ? capWords(pullQuote.trim(), 20) : "Two thumbs down.",
+  };
+}
+
+function parseCommentary(text: string, plays: Transaction[], stats: Stats, mode: BroadcastMode, verdictsSoFar: Verdict[]): CommentaryResponse | null {
+  let obj: Record<string, unknown>;
+  try {
+    obj = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const lines = parseLines(obj);
+  if (!lines) return null;
+  const chyron = typeof obj.chyron === "string" && obj.chyron.trim() ? obj.chyron.trim().toUpperCase().slice(0, 60) : "LIVE SPENDING";
+  if (mode === "play") {
+    return { lines, chyron, verdicts: parseVerdicts(obj, plays) };
+  }
+  if (mode === "halftime") {
+    return { lines, chyron, verdicts: [] };
+  }
+  const finalReview = parseFinalReview(obj) ?? cannedFinalReview(verdictsSoFar, stats);
+  return { lines, chyron, verdicts: [], finalReview };
+}
+
+async function callGemini(plays: Transaction[], stats: Stats, mode: BroadcastMode, verdictsSoFar: Verdict[]): Promise<CommentaryResponse | null> {
   const ai = getClient();
   const response = await ai.models.generateContent({
     model: GEMINI_MODEL,
@@ -202,73 +229,49 @@ async function callGemini(
       systemInstruction: SYSTEM_PROMPT,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
-      // Commentary should be creative, but not unhinged enough to wander off
-      // the numbers we just handed it.
       temperature: 0.95,
       topP: 0.95,
       maxOutputTokens: 700,
       abortSignal: AbortSignal.timeout(12000),
     },
   });
-
   const text = response.text;
   if (!text) return null;
-  return parseCommentary(text);
+  return parseCommentary(text, plays, stats, mode, verdictsSoFar);
 }
 
-/**
- * In-memory cache keyed by a hash of the request. Same demo twice = instant,
- * and it saves API credits during judging.
- */
 const cache = new Map<string, CommentaryResponse>();
 
-function fallbackFor(
-  plays: Transaction[],
-  mode: BroadcastMode,
-): CommentaryResponse {
-  if (mode === "halftime" || mode === "postgame") return cannedMode(mode);
-  const first = plays[0];
-  return cannedCommentary(first?.merchant, first?.amount);
+function fallbackFor(plays: Transaction[], stats: Stats, mode: BroadcastMode, verdictsSoFar: Verdict[]): CommentaryResponse {
+  return cannedFor(plays, mode, verdictsSoFar, stats);
 }
 
 function describeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
+  return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Main entry point used by POST /api/commentate.
- * Always resolves: a Gemini response, or a canned one. Never throws.
- */
 export async function generateCommentary(input: {
   plays: Transaction[];
   stats: Stats;
   mode: BroadcastMode;
+  verdicts?: Verdict[];
 }): Promise<{ commentary: CommentaryResponse; source: "gemini" | "canned" }> {
-  const { plays, stats, mode } = input;
-
-  const cacheKey = hash(
-    JSON.stringify({
-      plays: plays.map((p) => [p.merchant, round2(p.amount), p.category]),
-      mode,
-      balance: stats.currentBalance,
-      streak: stats.foodDeliveryStreak,
-      biggest: stats.biggestPlay?.amount ?? 0,
-      playsCount: stats.playsCount,
-    }),
-  );
-
+  const { plays, stats, mode, verdicts = [] } = input;
+  const cacheKey = hash(JSON.stringify({
+    plays: plays.map((p) => [p.id, p.merchant, round2(p.amount), p.category]),
+    mode,
+    balance: stats.currentBalance,
+    streak: stats.foodDeliveryStreak,
+    biggest: stats.biggestPlay?.amount ?? 0,
+    playsCount: stats.playsCount,
+    avg: stats.criticsAverage,
+  }));
   const cached = cache.get(cacheKey);
   if (cached) return { commentary: cached, source: "gemini" };
-
-  if (!geminiConfigured) {
-    return { commentary: fallbackFor(plays, mode), source: "canned" };
-  }
-
-  // Try twice (spec: retry once on parse failure), then give up gracefully.
+  if (!geminiConfigured) return { commentary: fallbackFor(plays, stats, mode, verdicts), source: "canned" };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await callGemini(plays, stats, mode);
+      const result = await callGemini(plays, stats, mode, verdicts);
       if (result) {
         cache.set(cacheKey, result);
         return { commentary: result, source: "gemini" };
@@ -277,6 +280,5 @@ export async function generateCommentary(input: {
       console.warn(`[gemini] attempt ${attempt + 1} failed:`, describeError(error));
     }
   }
-
-  return { commentary: fallbackFor(plays, mode), source: "canned" };
+  return { commentary: fallbackFor(plays, stats, mode, verdicts), source: "canned" };
 }

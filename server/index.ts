@@ -11,6 +11,7 @@ import type {
   Stats,
   Transaction,
   TransactionsResponse,
+  Verdict,
 } from "../shared/types";
 import { computeStats } from "../shared/stats";
 import { buildSeedTransactions, STARTING_BALANCE } from "./seed";
@@ -31,7 +32,10 @@ app.use(express.json({ limit: "1mb" }));
 // --- in-memory session state ------------------------------------------------
 // No database, per spec. Purchases created during a demo live here so the
 // scoreboard can include them even if Nessie rejects the write.
+// Verdicts given so far live here too, so the server can compute
+// criticsAverage and seed the canned postgame finalReview.
 const sessionPurchases: Transaction[] = [];
+const sessionVerdicts: Verdict[] = [];
 
 function mergeWithSession(transactions: Transaction[]): Transaction[] {
   return [...transactions, ...sessionPurchases].sort(
@@ -59,7 +63,7 @@ app.get(
 
     if (forceSeed) {
       const transactions = buildSeedTransactions();
-      const stats = computeStats(transactions, STARTING_BALANCE);
+      const stats = computeStats(transactions, STARTING_BALANCE, sessionVerdicts);
       const body: TransactionsResponse = {
         transactions,
         stats,
@@ -73,7 +77,7 @@ app.get(
       const result = await fetchNessieTransactions();
       if (result.transactions && result.transactions.length > 0) {
         const transactions = mergeWithSession(result.transactions);
-        const stats = computeStats(transactions, STARTING_BALANCE);
+        const stats = computeStats(transactions, STARTING_BALANCE, sessionVerdicts);
         const body: TransactionsResponse = {
           transactions,
           stats,
@@ -86,7 +90,7 @@ app.get(
     } catch (error) {
       // Silent, by design: the demo must always have data.
       const transactions = buildSeedTransactions();
-      const stats = computeStats(transactions, STARTING_BALANCE);
+      const stats = computeStats(transactions, STARTING_BALANCE, sessionVerdicts);
       const body: TransactionsResponse = {
         transactions,
         stats,
@@ -104,30 +108,57 @@ app.post("/api/commentate", async (req, res) => {
   const plays = Array.isArray(body?.plays) ? body.plays.slice(0, 3) : [];
   const mode: BroadcastMode = (body?.mode ?? "play") as BroadcastMode;
 
-  // The client sends its current stats, but we recompute from the canonical
-  // server view when possible: never trust numbers from the browser for math.
-  const stats = await resolveStats(body?.stats);
+  // The client sends its current stats (incl. verdicts for criticsAverage),
+  // but we recompute from the canonical server view when possible: never
+  // trust numbers from the browser for math. Client verdicts are merged into
+  // the server-side list so the average survives across segments.
+  const clientVerdicts = Array.isArray((body as { verdicts?: unknown })?.verdicts)
+    ? ((body as { verdicts?: Verdict[] }).verdicts as Verdict[])
+    : [];
+  for (const v of clientVerdicts) {
+    if (v && typeof v.playId === "string" && !sessionVerdicts.some((sv) => sv.playId === v.playId)) {
+      sessionVerdicts.push({ playId: v.playId, scores: { PBP: clampScore(v.scores?.PBP), COLOR: clampScore(v.scores?.COLOR) } });
+    }
+  }
+  const stats = await resolveStats(body?.stats, sessionVerdicts);
 
-  const { commentary, source } = await generateCommentary({ plays, stats, mode });
+  const { commentary, source } = await generateCommentary({ plays, stats, mode, verdicts: sessionVerdicts });
+  for (const v of commentary.verdicts ?? []) {
+    if (!sessionVerdicts.some((sv) => sv.playId === v.playId)) sessionVerdicts.push(v);
+  }
   return res.json({ commentary, source });
 });
 
+function clampScore(n: unknown): number {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(10, Math.round(v)));
+}
+
+// --- reset (used by "Start over"): clears in-memory session state ---------
+app.post("/api/reset", (_req, res) => {
+  sessionPurchases.length = 0;
+  sessionVerdicts.length = 0;
+  return res.json({ ok: true });
+});
+
 /** Prefer freshly computed stats; fall back to what the client sent. */
-async function resolveStats(clientStats: Stats | undefined): Promise<Stats> {
+async function resolveStats(clientStats: Stats | undefined, verdicts: Verdict[] = []): Promise<Stats> {
   try {
     const result = await fetchNessieTransactions();
     const base =
       result.transactions && result.transactions.length > 0
         ? mergeWithSession(result.transactions)
         : buildSeedTransactions();
-    return computeStats(base, STARTING_BALANCE);
+    return computeStats(base, STARTING_BALANCE, verdicts);
   } catch {
     if (clientStats && typeof clientStats.currentBalance === "number") {
-      return clientStats;
+      return { ...clientStats };
     }
     return computeStats(
       [...buildSeedTransactions(), ...sessionPurchases],
       STARTING_BALANCE,
+      verdicts,
     );
   }
 }
@@ -189,7 +220,7 @@ app.post("/api/purchase", async (req, res) => {
   return res.json({
     transaction,
     persisted,
-    stats: computeStats(all, STARTING_BALANCE),
+    stats: computeStats(all, STARTING_BALANCE, sessionVerdicts),
   });
 });
 

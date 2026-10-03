@@ -28,12 +28,10 @@ export const CATEGORIES: Category[] = [
 
 export type Transaction = {
   id: string;
-  merchant: string;
-  /** Positive dollars spent. Nessie stores purchases as negative; we normalize. */
-  amount: number;
+  merchant: string;          // "Chipotle"
+  amount: number;            // positive dollars spent
   category: Category;
-  /** ISO 8601 date string. */
-  date: string;
+  date: string;              // ISO
   description?: string;
 };
 
@@ -51,8 +49,11 @@ export type Stats = {
   foodDeliveryStreak: number;
   /** Highest-amount purchase, ignoring transfers. */
   biggestPlay: Transaction | null;
+  /** Subscription count = "turnovers" in booth speak. */
   subscriptionsCount: number;
   playsCount: number;
+  /** Mean of every critic score given so far (1 decimal), null if none. */
+  criticsAverage: number | null;
 };
 
 export type Speaker = "PBP" | "COLOR";
@@ -67,10 +68,22 @@ export type CommentaryLine = {
   intensity: Intensity;
 };
 
+export type Verdict = {
+  playId: string;                          // matches Transaction.id
+  scores: { PBP: number; COLOR: number };  // integers 0 to 10
+};
+
+export type FinalReview = {
+  scores: { PBP: number; COLOR: number };  // integers 0 to 10, whole run
+  pullQuote: string;                       // punchy, max 20 words
+};
+
 export type CommentaryResponse = {
-  lines: CommentaryLine[];
+  lines: CommentaryLine[];      // 2 to 4 lines per call
   /** Short ALL CAPS lower-third graphic, max 8 words. */
   chyron: string;
+  verdicts: Verdict[];          // one per play in "play" mode, else []
+  finalReview?: FinalReview;    // only in "postgame" mode
 };
 
 export type BroadcastMode = "play" | "halftime" | "postgame";
@@ -92,6 +105,8 @@ export type CommentateRequest = {
   /** Server-computed real numbers. The LLM is told never to do math itself. */
   stats: Stats;
   mode: BroadcastMode;
+  /** All verdicts given so far (client is source of truth). */
+  verdicts?: Verdict[];
 };
 
 export type TtsRequest = {

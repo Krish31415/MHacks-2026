@@ -53,6 +53,7 @@ export function byCategory(
 export function computeStats(
   transactions: Transaction[],
   startingBalance: number,
+  verdicts: Array<{ scores: { PBP: number; COLOR: number } }> = [],
 ): Stats {
   const spent = totalSpent(transactions);
   return {
@@ -65,7 +66,29 @@ export function computeStats(
     subscriptionsCount: transactions.filter((t) => t.category === "subscription")
       .length,
     playsCount: transactions.length,
+    criticsAverage: criticsAverage(verdicts),
   };
+}
+
+/** Mean of every critic score (both critics) across all verdicts, 1 decimal. Null if none. */
+export function criticsAverage(
+  verdicts: Array<{ scores: { PBP: number; COLOR: number } }>,
+): number | null {
+  const all: number[] = [];
+  for (const v of verdicts) {
+    const a = Number(v.scores?.PBP);
+    const b = Number(v.scores?.COLOR);
+    if (Number.isFinite(a)) all.push(a);
+    if (Number.isFinite(b)) all.push(b);
+  }
+  if (all.length === 0) return null;
+  // Spec section 8: the critics' average is rounded to ONE decimal.
+  return round1(all.reduce((s, n) => s + n, 0) / all.length);
+}
+
+/** Rounds to one decimal place, e.g. 3.667 -> 3.7. */
+export function round1(n: number): number {
+  return Math.round((n + Number.EPSILON) * 10) / 10;
 }
 
 /**

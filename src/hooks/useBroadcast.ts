@@ -5,14 +5,18 @@ import type {
   BroadcastPhase,
   CommentaryLine,
   DataSource,
+  FinalReview,
   Speaker,
   Stats,
   Transaction,
   TransactionsResponse,
+  Verdict,
 } from "../../shared/types";
 import {
   balanceAfter,
   computeStats,
+  criticsAverage,
+  round2,
   sortNewestFirst,
 } from "../../shared/stats";
 import {
@@ -20,6 +24,7 @@ import {
   fetchSpeech,
   fetchTransactions,
   postPurchase,
+  resetSession,
 } from "../api";
 
 /**
@@ -34,6 +39,8 @@ import {
  * - If /api/tts fails (no key, no credits, 502) we transparently fall back to
  *   the browser's speechSynthesis with two different voices.
  * - An impulse buy that lands mid-sentence is queued, never interrupted.
+ * - Verdicts land in state AFTER a segment's last line finishes; the average
+ *   is recomputed from that state and sent on every commentate request.
  */
 
 /** Roughly one 2-play segment plus a beat: lands the demo around 60-90s. */
@@ -47,6 +54,7 @@ export type FeedPlay = {
   number: number;
   status: "pending" | "live" | "done";
   impulse?: boolean;
+  verdict?: Verdict;
 };
 
 type Segment = {
@@ -70,6 +78,12 @@ export function useBroadcast() {
   const [busy, setBusy] = useState(false);
   const [segmentsPlayed, setSegmentsPlayed] = useState(0);
   const [browserVoice, setBrowserVoice] = useState(false);
+  // --- verdict system (spec section 11) ---
+  const [verdicts, setVerdicts] = useState<Verdict[]>([]);
+  const [latestVerdicts, setLatestVerdicts] = useState<Verdict[]>([]);
+  const [finalReview, setFinalReview] = useState<FinalReview | null>(null);
+  const verdictsRef = useRef<Verdict[]>([]);
+  const verdictQueueRef = useRef<Verdict[]>([]);
 
   // Screen shake key + crowd emoji burst.
   const [shakeKey, setShakeKey] = useState(0);
@@ -95,26 +109,55 @@ export function useBroadcast() {
     () => [...baseTransactionsRef.current, ...impulseRef.current],
     // feed changes whenever a play's status changes, which is our re-render
     // signal for recomputing after an impulse buy.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [feed],
   );
 
-  const liveStats: Stats = useMemo(
-    () => computeStats(allTransactions, startBalance),
-    [allTransactions, startBalance],
-  );
+  /** Live scoreboard stats: server numbers + impulse buys + critic scores. */
+  const liveStats: Stats = useMemo(() => {
+    const avg = criticsAverage(verdicts);
+    const impulseTotal = round2(impulseRef.current.reduce((s, t) => s + t.amount, 0));
+    const history = baseTransactionsRef.current;
+    const newestImpulse = impulseRef.current.length
+      ? sortNewestFirst(impulseRef.current)[0]
+      : null;
+    const newestHistory = history.length ? sortNewestFirst(history)[0] : null;
+    const newest =
+      newestImpulse && newestHistory
+        ? new Date(newestImpulse.date) > new Date(newestHistory.date)
+          ? newestImpulse
+          : newestHistory
+        : (newestImpulse ?? newestHistory);
+    const streak =
+      newest?.category === "food_delivery"
+        ? (data?.stats.foodDeliveryStreak ?? 0)
+        : 0;
+    if (data) {
+      return {
+        ...data.stats,
+        totalSpent: round2(data.stats.totalSpent + impulseTotal),
+        currentBalance: round2(data.stats.currentBalance - impulseTotal),
+        playsCount: data.stats.playsCount + impulseRef.current.length,
+        foodDeliveryStreak: streak,
+        criticsAverage: avg,
+      };
+    }
+    return computeStats(allTransactions, startBalance, verdicts);
+  }, [data, feed, startBalance, verdicts, allTransactions]);
 
+  // --- data loading --------------------------------------------------------
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
       const result = await fetchTransactions();
-      baseTransactionsRef.current = result.transactions;
       setData(result);
-      displayBalanceRef.current = result.stats.startingBalance;
-      setBalance(result.stats.startingBalance);
+      baseTransactionsRef.current = result.transactions;
+      setBalance(result.stats.currentBalance);
+      displayBalanceRef.current = result.stats.currentBalance;
       setFeed(
-        result.transactions.map((transaction, i) => ({
-          transaction,
+        result.transactions.map((t, i) => ({
+          transaction: t,
           number: i + 1,
           status: "pending" as const,
         })),
@@ -130,112 +173,70 @@ export function useBroadcast() {
     void load();
   }, [load]);
 
-  // --- browser speechSynthesis fallback -------------------------------------
-  // Two different voices so the booth still sounds like two people when
-  // ElevenLabs is unavailable.
-  const browserVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
-  useEffect(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    const loadVoices = () => {
-      browserVoicesRef.current = window.speechSynthesis.getVoices();
-    };
-    loadVoices();
-    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
-    return () =>
-      window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
-  }, []);
-
-  const isMaleVoice = (name: string) =>
-    /male|daniel|alex|fred|george|david|mark/i.test(name);
-
-  const pickBrowserVoice = useCallback(
-    (speaker: Speaker): SpeechSynthesisVoice | null => {
-      const voices = browserVoicesRef.current;
-      if (voices.length === 0) return null;
-      if (speaker === "PBP") {
-        const male =
-          voices.find((v) => isMaleVoice(v.name)) ??
-          voices.find((v) => v.lang.startsWith("en"));
-        return male ?? voices[0];
-      }
-      // COLOR: any *other* English voice, so the two never sound identical.
-      const pbp = voices.find((v) => isMaleVoice(v.name));
-      const other = voices.find(
-        (v) => v.lang.startsWith("en") && v.voiceURI !== pbp?.voiceURI,
-      );
-      return other ?? voices[voices.length - 1];
-    },
-    [],
-  );
-
-  /** Rough spoken length, used when audio is muted or unavailable. */
-  const estimateDuration = useCallback((text: string): number => {
-    const words = text.split(/\s+/).filter(Boolean).length;
-    return Math.max(1200, (words / 2.7) * 1000);
-  }, []);
-
-// --- screen shake + crowd burst (CSS only) --------------------------------
+  // --- effects ---------------------------------------------------------------
   const triggerEffects = useCallback((intensity: number) => {
-    if (intensity < 4) return;
-    // Re-key the animation so consecutive bursts both play.
-    setShakeKey((k) => k + 1);
-    const burst = Array.from({ length: intensity >= 5 ? 9 : 6 }, () => {
-      crowdIdRef.current += 1;
-      return {
-        id: crowdIdRef.current,
+    // Big plays shake the whole screen and burst crowd emoji (CSS only).
+    if (intensity >= 4) {
+      setShakeKey((k) => k + 1);
+      const burst = Array.from({ length: 8 }, () => ({
+        id: ++crowdIdRef.current,
         emoji: CROWD_EMOJI[Math.floor(Math.random() * CROWD_EMOJI.length)],
         left: 5 + Math.random() * 90,
-        spin: `${Math.round((Math.random() - 0.5) * 120)}deg`,
-      };
-    });
-    setCrowd((current) => [...current, ...burst]);
-    // Clean up so the DOM does not grow forever.
-    setTimeout(() => setCrowd((current) => current.slice(-18)), 1600);
+        spin: `${Math.random() > 0.5 ? "" : "-"}${20 + Math.random() * 60}deg`,
+      }));
+      setCrowd((current) => [...current.slice(-24), ...burst]);
+      globalThis.setTimeout(() => {
+        setCrowd((current) => current.filter((c) => !burst.some((b) => b.id === c.id)));
+      }, 2200);
+    }
   }, []);
 
-  /** Animate the scoreboard from its current value to the next one. */
+  /** Ticks the scoreboard number down smoothly toward the target. */
   const tickBalanceTo = useCallback((target: number) => {
     const from = displayBalanceRef.current;
-    displayBalanceRef.current = target;
-    if (Math.abs(from - target) < 0.005) {
-      setBalance(target);
-      return;
-    }
-    const startedAt = performance.now();
-    const duration = 650;
-    setBalance(target);
-
-    const step = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setBalance(from + (target - from) * eased);
-      if (progress < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+    const steps = 24;
+    const delta = (target - from) / steps;
+    let i = 0;
+    const timer = globalThis.setInterval(() => {
+      i += 1;
+      const value = i >= steps ? target : round2(from + delta * i);
+      displayBalanceRef.current = value;
+      setBalance(value);
+      if (i >= steps) globalThis.clearInterval(timer);
+    }, 28);
   }, []);
 
+  // --- audio: ElevenLabs first, browser voices as the safety net ---------------
   /**
-   * Speak one line. Prefers the server mp3 (ElevenLabs) and falls back to the
-   * browser. Resolves when the line finishes so segments stay in sync.
+   * Speaks one line: tries the server (ElevenLabs mp3) first, and falls back
+   * to the browser's speechSynthesis with a per-speaker voice pick.
+   * Resolves only when the line has actually finished playing.
    */
   const speak = useCallback(
-    async (line: CommentaryLine): Promise<void> => {
-      setActiveSpeaker(line.speaker);
-      setCaption(line.text);
-      if (line.intensity >= 4) triggerEffects(line.intensity);
+    async (line: CommentaryLine, isMuted: boolean): Promise<void> => {
+      if (isMuted) {
+        const words = line.text.split(/\s+/).length;
+        const seconds = Math.min(6, Math.max(1.2, (words / 150) * 60));
+        await new Promise((resolve) => globalThis.setTimeout(resolve, seconds * 1000));
+        return;
+      }
 
       const blob = await fetchSpeech(line.speaker, line.text);
-
-      // --- ElevenLabs path ---
       if (blob) {
         const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.volume = muted ? 0 : 1;
         try {
           await new Promise<void>((resolve) => {
-            audio.onended = () => resolve();
-            audio.onerror = () => resolve();
-            void audio.play().catch(() => resolve());
+            const audio = new Audio(url);
+            const done = () => {
+              audio.onended = null;
+              audio.onerror = null;
+              resolve();
+            };
+            audio.onended = done;
+            audio.onerror = done;
+            // If the file cannot decode, don't hang the show.
+            globalThis.setTimeout(done, 15000);
+            void audio.play().catch(done);
           });
         } finally {
           URL.revokeObjectURL(url);
@@ -243,174 +244,215 @@ export function useBroadcast() {
         return;
       }
 
-      // --- browser fallback path ---
+      // ElevenLabs unavailable: use the browser's built-in voices instead.
       setBrowserVoice(true);
-      const fallbackMs = estimateDuration(line.text);
-
-      if (muted || typeof window === "undefined" || !("speechSynthesis" in window)) {
-        await new Promise((resolve) => setTimeout(resolve, fallbackMs));
-        return;
-      }
-
       await new Promise<void>((resolve) => {
+        if (!("speechSynthesis" in window)) {
+          globalThis.setTimeout(resolve, 1200);
+          return;
+        }
+        const synth = window.speechSynthesis;
+        // Cancel first: Chrome piles up utterances if you queue too eagerly.
+        synth.cancel();
         const utterance = new SpeechSynthesisUtterance(line.text);
-        utterance.voice = pickBrowserVoice(line.speaker);
-        utterance.rate = line.speaker === "PBP" ? 1.15 : 0.95;
-        utterance.pitch = line.speaker === "PBP" ? 1.15 : 0.9;
-        utterance.volume = muted ? 0 : 1;
-        let settled = false;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          resolve();
-        };
-        utterance.onend = finish;
-        utterance.onerror = finish;
-        window.speechSynthesis.speak(utterance);
-        window.speechSynthesis.speak(utterance);
-        // Safety net: some engines never fire onend.
-        setTimeout(finish, fallbackMs + 2500);
+        const voices = synth.getVoices();
+        const pick =
+          line.speaker === "PBP"
+            ? voices.find((v) => v.name.toLowerCase().includes("daniel")) ??
+              voices.find((v) => v.lang.startsWith("en") && v.name.toLowerCase().includes("male")) ??
+              voices.find((v) => v.lang.startsWith("en"))
+            : voices.find((v) => v.name.toLowerCase().includes("samantha")) ??
+              voices.find((v) => v.lang.startsWith("en") && v.name.toLowerCase().includes("female")) ??
+              voices.find((v) => v.lang.startsWith("en"));
+        if (pick) utterance.voice = pick;
+        utterance.rate = line.speaker === "PBP" ? 1.08 : 0.96;
+        utterance.pitch = line.speaker === "PBP" ? 1.1 : 0.9;
+        utterance.onend = () => resolve();
+        utterance.onerror = () => resolve();
+        synth.speak(utterance);
+        // Safety net: a stuck utterance must never freeze the show.
+        globalThis.setTimeout(resolve, 12000);
       });
     },
-    [muted, estimateDuration, pickBrowserVoice, triggerEffects],
+    [],
   );
 
-/**
-   * Play one segment: mark the plays live, move the scoreboard, ask Gemini for
-   * the script, then read the lines in order.
+  // --- the segment runner ----------------------------------------------------
+  /**
+   * Plays ONE commentary segment: ask Gemini (or canned) for lines, fire off
+   * TTS for every line in parallel, then play them in order while syncing
+   * speaker, captions, chyron, and the ticking balance. When the last line
+   * finishes, the verdict cards reveal and the feed badges update.
    */
   const runSegment = useCallback(
-    async (segment: Segment) => {
-      const { plays, mode, isImpulse } = segment;
-
-      if (mode === "halftime") setPhase("halftime");
-      if (mode === "postgame") setPhase("postgame");
-
-      if (plays.length > 0 && mode === "play") {
-        setFeed((current) =>
-          current.map((entry) =>
-            plays.some((p) => p.id === entry.transaction.id)
-              ? { ...entry, status: "live" as const }
-              : entry,
-          ),
-        );
-        // How many plays have been called by the end of this segment.
-        const doneBefore = feed.filter((p) => p.status === "done").length;
-        tickBalanceTo(
-          balanceAfter(
-            [...baseTransactionsRef.current, ...impulseRef.current],
-            startBalance,
-            doneBefore + plays.length,
-          ),
-        );
-      }
-
-      // The booth quotes the balance that is actually on screen.
+    async (segment: Segment): Promise<boolean> => {
+      const { plays, mode } = segment;
+      const covered = feed.filter((f) => f.status === "done").length;
       const segmentStats: Stats = {
-        ...liveStats,
-        currentBalance: displayBalanceRef.current,
-        totalSpent: Math.round((startBalance - displayBalanceRef.current) * 100) / 100,
+        startingBalance: startBalance,
+        currentBalance: round2(balanceAfter(allTransactions, startBalance, covered + plays.length)),
+        totalSpent: round2(startBalance - balanceAfter(allTransactions, startBalance, covered + plays.length)),
+        byCategory: liveStats.byCategory,
+        foodDeliveryStreak: liveStats.foodDeliveryStreak,
+        biggestPlay: liveStats.biggestPlay,
+        subscriptionsCount: liveStats.subscriptionsCount,
+        playsCount: covered + plays.length,
+        criticsAverage: criticsAverage(verdictsRef.current),
       };
 
-      let lines: CommentaryLine[] = [];
-      let graphic: string | null = null;
       try {
         const { commentary } = await fetchCommentary({
           plays: plays.slice(0, 3),
           stats: segmentStats,
           mode,
+          verdicts: verdictsRef.current,
         });
-        lines = commentary.lines;
-        graphic = commentary.chyron;
-      } catch {
-        // Server is down: hold a beat and move on rather than freezing.
-        setCaption("...we seem to have lost the feed...");
-        await new Promise((r) => setTimeout(r, 1500));
-      }
 
-      if (stoppedRef.current) return;
-      if (graphic) setChyron(graphic);
-      if (isImpulse) triggerEffects(5);
+        // Verdicts reveal AFTER the last line finishes (see playLines below).
+        if (commentary.verdicts && commentary.verdicts.length > 0) {
+          verdictQueueRef.current.push(...commentary.verdicts);
+        }
+        if (mode === "postgame" && commentary.finalReview) {
+          setFinalReview(commentary.finalReview);
+        }
 
-      // Kick off every TTS request now, then play them in order. Line 1 begins
-      // the instant it lands while the rest are still downloading.
-      for (const line of lines) void fetchSpeech(line.speaker, line.text);
-      for (const line of lines) {
-        if (stoppedRef.current) return;
-        await speak(line);
-      }
+        setChyron(commentary.chyron);
+        setBusy(true);
 
-      if (plays.length > 0 && mode === "play") {
-        setFeed((current) =>
-          current.map((entry) =>
-            plays.some((p) => p.id === entry.transaction.id)
-              ? { ...entry, status: "done" as const }
-              : entry,
-          ),
+        // Mark the covered plays live so the feed highlights them.
+        if (plays.length > 0) {
+          const ids = new Set(plays.map((p) => p.id));
+          setFeed((current) =>
+            current.map((entry) =>
+              ids.has(entry.transaction.id) ? { ...entry, status: "live" as const } : entry,
+            ),
+          );
+        }
+
+        // Tick the scoreboard as the segment lands.
+        if (plays.length > 0) {
+          const spent = plays.reduce((s, p) => s + p.amount, 0);
+          tickBalanceTo(round2(displayBalanceRef.current - spent));
+        }
+
+        // Prefetch: request TTS for all lines in parallel, then play in order.
+        // Line 1 starts as soon as it is ready while the rest keep loading.
+        const audioPromises = commentary.lines.map((line) =>
+          fetchSpeech(line.speaker, line.text),
         );
+        let index = 0;
+        for (const line of commentary.lines) {
+          setActiveSpeaker(line.speaker);
+          setCaption(`${line.speaker === "PBP" ? "MIKE" : "LINDA"}: ${line.text}`);
+          triggerEffects(line.intensity);
+          const blob = await audioPromises[index];
+          index += 1;
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            try {
+              await new Promise<void>((resolve) => {
+                const audio = new Audio(url);
+                const done = () => {
+                  audio.onended = null;
+                  audio.onerror = null;
+                  resolve();
+                };
+                audio.onended = done;
+                audio.onerror = done;
+                globalThis.setTimeout(done, 15000);
+                let started = false;
+                const startTimer = globalThis.setInterval(() => {
+                  // muted mid-line: stop paying attention to the element.
+                  if (!started) {
+                    started = true;
+                    globalThis.clearInterval(startTimer);
+                    void audio.play().catch(done);
+                  }
+                }, 30);
+              });
+            } finally {
+              URL.revokeObjectURL(url);
+            }
+          } else {
+            await speak(line, muted);
+          }
+        }
+
+        // Segment over: reveal verdicts, badge the feed, update the average.
+        const fresh = verdictQueueRef.current.splice(0);
+        if (fresh.length > 0) {
+          verdictsRef.current = [...verdictsRef.current, ...fresh];
+          setVerdicts([...verdictsRef.current]);
+          setLatestVerdicts(fresh);
+          const byId = new Map(fresh.map((v) => [v.playId, v]));
+          setFeed((current) =>
+            current.map((entry) => {
+              const v = byId.get(entry.transaction.id);
+              return v ? { ...entry, verdict: v } : entry;
+            }),
+          );
+        }
+        if (plays.length > 0) {
+          const ids = new Set(plays.map((p) => p.id));
+          setFeed((current) =>
+            current.map((entry) =>
+              ids.has(entry.transaction.id) ? { ...entry, status: "done" as const } : entry,
+            ),
+          );
+        }
+
+        setActiveSpeaker(null);
+        setSegmentsPlayed((n) => n + 1);
+        return true;
+      } catch (error) {
+        console.warn("[broadcast] segment failed:", error);
+        return false;
+      } finally {
+        setBusy(false);
       }
-      setSegmentsPlayed((n) => n + 1);
     },
-    [
-      balanceAfter,
-      feed,
-      liveStats,
-      speak,
-      startBalance,
-      tickBalanceTo,
-      triggerEffects,
-    ],
+    [allTransactions, balanceAfter, feed, liveStats, muted, speak, startBalance, tickBalanceTo, triggerEffects],
   );
 
-  /** Drain the segment queue one at a time. Never runs two at once. */
+  /** Drain the segment queue one at a time; impulse buys queue, never cut in. */
   const pump = useCallback(async () => {
     if (runningRef.current) return;
     runningRef.current = true;
-    setBusy(true);
     try {
       while (queueRef.current.length > 0 && !stoppedRef.current) {
         const next = queueRef.current.shift();
-        if (next) await runSegment(next);
+        if (!next) break;
+        await runSegment(next);
       }
     } finally {
       runningRef.current = false;
-      setBusy(false);
     }
   }, [runSegment]);
 
-// --- public controls --------------------------------------------------------
-
-  /**
-   * START BROADCAST. This click is also the user gesture that unlocks audio,
-   * which is how we avoid browser autoplay blocking.
-   */
+  // --- show control ----------------------------------------------------------
   const startBroadcast = useCallback(async () => {
-    if (startedRef.current) return;
+    if (startedRef.current || !data) return;
     startedRef.current = true;
     setHasStarted(true);
     stoppedRef.current = false;
     setPhase("q1");
 
-    if (baseTransactionsRef.current.length === 0) await load();
-
-    // Replay history oldest-first, a couple of plays per segment.
-    const history = [...baseTransactionsRef.current];
+    // Replay history oldest-first, 2 plays per segment, ~7 segments max so the
+    // show lands in 60-90s, then prompt HALFTIME instead of narrating forever.
+    const history = [...data.transactions].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
     const segments: Segment[] = [];
     for (let i = 0; i < history.length; i += PLAYS_PER_SEGMENT) {
-      segments.push({
-        plays: history.slice(i, i + PLAYS_PER_SEGMENT),
-        mode: "play",
-      });
+      segments.push({ plays: history.slice(i, i + PLAYS_PER_SEGMENT), mode: "play" });
     }
     const capped = segments.slice(0, MAX_SEGMENTS);
-
     // Sprinkle a halftime report in the middle for broadcast texture.
     capped.splice(Math.ceil(capped.length / 2), 0, { plays: [], mode: "halftime" });
     queueRef.current.push(...capped);
-
     await pump();
-    if (!stoppedRef.current) setPhase("halftime");
-  }, [load, pump]);
+    if (!stoppedRef.current) setPhase("q2");
+  }, [data, pump]);
 
   /** IMPULSE BUY: the money shot. Adds to the feed, then queues commentary. */
   const impulseBuy = useCallback(
@@ -483,6 +525,32 @@ export function useBroadcast() {
     stoppedRef.current = true;
   }, [pump]);
 
+  /** Start over: clear verdicts/audio state and reload the transaction book. */
+  const startOver = useCallback(async () => {
+    stopBroadcastRef.current?.();
+    verdictsRef.current = [];
+    verdictQueueRef.current = [];
+    setVerdicts([]);
+    setLatestVerdicts([]);
+    setFinalReview(null);
+    impulseRef.current = [];
+    queueRef.current = [];
+    startedRef.current = false;
+    stoppedRef.current = false;
+    setHasStarted(false);
+    setPhase("pregame");
+    setSegmentsPlayed(0);
+    setChyron(null);
+    setCaption("");
+    setActiveSpeaker(null);
+    try {
+      await resetSession();
+    } catch {
+      // Session reset is best-effort; the reload below restores the UI anyway.
+    }
+    await load();
+  }, [load]);
+
   /** Emergency brake for a demo gone sideways. */
   const stopBroadcast = useCallback(() => {
     stoppedRef.current = true;
@@ -492,6 +560,8 @@ export function useBroadcast() {
     }
     setBusy(false);
   }, []);
+  const stopBroadcastRef = useRef(stopBroadcast);
+  stopBroadcastRef.current = stopBroadcast;
 
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
 
@@ -505,6 +575,10 @@ export function useBroadcast() {
     loadError,
     stats: liveStats,
     feed,
+    // verdict system
+    verdicts,
+    latestVerdicts,
+    finalReview,
     // broadcast state
     phase,
     balance,
@@ -524,10 +598,10 @@ export function useBroadcast() {
     impulseBuy,
     callHalftime,
     callPostgame,
+    startOver,
     stopBroadcast,
     toggleMute,
     reload: load,
     newestFirst: sortNewestFirst,
   };
 }
-

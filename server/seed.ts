@@ -25,21 +25,22 @@ type SeedPurchase = {
 const SEED_PURCHASES: SeedPurchase[] = [
   // Ten days ago: the season opener. Two coffees because we are unwell.
   { merchant: "Starbucks", amount: 6.75, category: "coffee", dayOffset: 10, hour: 8, description: "cold brew, still in bed" },
-  { merchant: "Starbucks", amount: 7.1, category: "coffee", dayOffset: 10, hour: 9, description: "second cold brew, no regrets" },
+  { merchant: "Starbucks", amount: 7.10, category: "coffee", dayOffset: 10, hour: 9, description: "second cold brew, no regrets" },
   { merchant: "Chipotle", amount: 14.85, category: "restaurant", dayOffset: 9, hour: 12, description: "chicken bowl, no cilantro" },
-  { merchant: "DoorDash", amount: 27.4, category: "food_delivery", dayOffset: 8, hour: 21, description: "delivery fee alone was $6.99" },
+  { merchant: "DoorDash", amount: 27.40, category: "food_delivery", dayOffset: 8, hour: 21, description: "delivery fee alone was $6.99" },
   { merchant: "Amazon", amount: 43.27, category: "shopping", dayOffset: 7, hour: 23, description: "a gadget we already own" },
   { merchant: "DoorDash", amount: 31.15, category: "food_delivery", dayOffset: 7, hour: 22, description: "second delivery in one night" },
   { merchant: "Netflix", amount: 15.49, category: "subscription", dayOffset: 6, hour: 7, description: "still watching the same show" },
-  { merchant: "DoorDash", amount: 22.9, category: "food_delivery", dayOffset: 1, hour: 21, description: "the night before the spree began" },
   { merchant: "Spotify", amount: 11.99, category: "subscription", dayOffset: 5, hour: 6, description: "premium, mostly podcasts" },
-  { merchant: "Insomnia Cookies", amount: 12.0, category: "restaurant", dayOffset: 4, hour: 1, description: "1am. cookies. in the dark." },
-  { merchant: "Uber", amount: 18.6, category: "transport", dayOffset: 4, hour: 2, description: "ride home from the cookie store" },
+  { merchant: "Insomnia Cookies", amount: 12.00, category: "restaurant", dayOffset: 4, hour: 1, description: "1am. cookies. in the dark." },
+  { merchant: "Uber", amount: 18.60, category: "transport", dayOffset: 4, hour: 2, description: "ride home from the cookie store" },
   { merchant: "Steam", amount: 59.99, category: "gaming", dayOffset: 3, hour: 21, description: "the sale ends at midnight, obviously" },
-  { merchant: "Venmo to roommate", amount: 85.0, category: "transfer", dayOffset: 2, hour: 18, description: "electricity, allegedly" },
-  { merchant: "DoorDash", amount: 24.5, category: "food_delivery", dayOffset: 1, hour: 22, description: "four straight days, Linda. FOUR." },
-  { merchant: "Target", amount: 67.34, category: "shopping", dayOffset: 1, hour: 14, description: "four candles, one throw pillow" },
   { merchant: "Apple.com", amount: 9.99, category: "subscription", dayOffset: 3, hour: 9, description: "cloud storage we do not use" },
+  { merchant: "Venmo to roommate", amount: 85.00, category: "transfer", dayOffset: 2, hour: 18, description: "electricity, allegedly" },
+  { merchant: "Raising Cane's", amount: 13.25, category: "restaurant", dayOffset: 2, hour: 12, description: "box combo, extra toast" },
+  { merchant: "Target", amount: 67.34, category: "shopping", dayOffset: 1, hour: 14, description: "four candles, one throw pillow" },
+  { merchant: "DoorDash", amount: 22.90, category: "food_delivery", dayOffset: 1, hour: 21, description: "the night before the spree began" },
+  { merchant: "Domino's", amount: 24.50, category: "food_delivery", dayOffset: 0, hour: 22, description: "four straight days, Linda. FOUR." },
 ];
 
 /**
@@ -49,7 +50,7 @@ const SEED_PURCHASES: SeedPurchase[] = [
  */
 const CATEGORY_KEYWORDS: Array<[Category, string[]]> = [
   ["food_delivery", ["doordash", "uber eats", "grubhub", "postmates", "domino", "pizza", "papa john"]],
-  ["restaurant", ["chipotle", "mcdonald", "starbucks cafe", "restaurant", "cafe", "canes", "sweetgreen", "insomnia cookies", "panera", "subway", "taco"]],
+  ["restaurant", ["chipotle", "mcdonald", "starbucks cafe", "restaurant", "cafe", "cane", "canes", "sweetgreen", "insomnia cookies", "panera", "subway", "taco"]],
   ["coffee", ["starbucks", "dunkin", "peets", "coffee", "espresso", "blue bottle"]],
   ["subscription", ["netflix", "spotify", "hulu", "apple.com", "apple music", "icloud", "disney", "prime", "subscription", "adobe", "patreon", "onlyfans", "hbo", "paramount"]],
   ["transport", ["uber", "lyft", "amtrak", "shell", "chevron", "exxon", "parking", "transit", "metro", "gas station"]],

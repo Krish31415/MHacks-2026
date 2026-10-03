@@ -29,6 +29,23 @@ Nessie purchases ──▶ Express API ──▶ stats engine (pure TS, unit-tes
 **Anti-hallucination rule:** every dollar figure the booth says is computed by
 `shared/stats.ts`. Gemini only gets the numbers and writes jokes around them.
 
+## How we used each sponsor API
+
+- **Capital One Nessie** — the server loads a real customer → account → purchases
+  and normalizes them into our `Transaction` type; sparse demo accounts get seeded
+  with the fake-spending history so judges can see real data in the Nessie console.
+- **Google Gemini** — writes the two-person commentary script as strictly-schemaed
+  JSON: 2–4 spoken lines, a TV lower-third chyron, and a `verdicts` array giving
+  each purchase a 0–10 score from both critics.
+- **ElevenLabs** — turns each line into an mp3 with a low-latency flash model,
+  mapping Mike to one voice ID and Linda to another (browser voices as fallback).
+
+**The critic scoring system:** every purchase gets two scores, one from each
+critic — an integer 0–10 where essentials and good value score high and repeat
+food delivery, impulse buys, and unused subscriptions score low. A purchase where
+they disagree by 4+ points is flagged on screen as a **SPLIT DECISION**, and the
+running **CRITICS' AVERAGE** is shown on the scoreboard and the ticker tape.
+
 ## Quickstart
 
 ```bash
@@ -43,7 +60,7 @@ Open http://localhost:5173 → **START BROADCAST**.
 |---|---|
 | `npm run dev` | server + client with hot reload |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | stats engine unit tests (5 tests) |
+| `npm test` | stats engine unit tests (7 tests) |
 | `npm run build` | typecheck + production Vite build → `dist/` |
 | `npm start` | serve `dist/` + API from one Node process |
 
@@ -64,8 +81,10 @@ Defaults that already work: `GEMINI_MODEL=gemini-3.8-flash`,
 2. Hit **START BROADCAST** — history replays as plays, balance ticks down,
    halftime report lands mid-show.
 3. Mid-sentence, hit **DoorDash $28** (or any Impulse Buy) — the play appears
-   instantly, commentary queues behind the current line, screen shakes.
-4. Hit **Postgame** for the final-score wrap-up and MVP (worst purchase).
+   instantly, commentary queues behind the current line, screen shakes, and a
+   verdict card pops in with both critics' scores.
+4. Hit **Postgame** for the poster-style final review: whole-run scores, thumbs,
+   a movie-poster pull quote, and a working **Start over**.
 5. Talking points: stats engine vs LLM math, Nessie write-back (check the
    Nessie console — sparse accounts get seeded with the demo history),
    TTS cache (repeat lines cost nothing).
@@ -74,13 +93,21 @@ Defaults that already work: `GEMINI_MODEL=gemini-3.8-flash`,
 
 - `GET /api/health` → `{ ok, service, config, sessionPurchases }`
 - `GET /api/transactions[?source=seed]` → `{ transactions, stats, source, accountLabel }`
-- `POST /api/commentate` `{ plays[≤3], stats, mode }` → `{ commentary: { lines[], chyron }, source: \"gemini\"|\"canned\" }`
+- `POST /api/commentate` `{ plays[≤3], stats, mode, verdicts? }` → `{ commentary: { lines[], chyron, verdicts[], finalReview? }, source: "gemini"|"canned" }`
 - `POST /api/tts` `{ speaker: \"PBP\"|\"COLOR\", text }` → `audio/mpeg` (4xx/5xx → client falls back)
 - `POST /api/purchase` `{ merchant, amount, description? }` → `{ transaction, persisted, stats }`
 
-Broadcast modes: `play` (live reaction) · `halftime` (trend report) ·
-`postgame` (final score + MVP roast). UI phases: `pregame → q1 → q2 →
+Broadcast modes: `play` (live reaction + one verdict per play) · `halftime`
+(trend report, no verdicts) · `postgame` (final review: whole-run scores, an MVP
+roast, and a movie-poster `pullQuote`). UI phases: `pregame → q1 → q2 →
 halftime → postgame (FINAL)`.
+
+## Entered in
+
+**FinTech** (main track) plus the **Useless AI**, **Dumbest Idea**, and **Judged
+by an LLM** side quests. Devpost blurb and side-quest pitches are in
+[`DEVPOST.md`](./DEVPOST.md).
+
 
 ## Project layout
 
@@ -89,6 +116,7 @@ server/  index.ts (routes)  nessie.ts  gemini.ts  tts.ts  canned.ts  seed.ts  en
 shared/  types.ts  stats.ts (+ stats.test.ts)
 src/     App.tsx  api.ts  hooks/useBroadcast.ts
          components/ Scoreboard Booth Chyron PlayFeed Ticker Controls
+                     VerdictCard FinalReviewCard
 ```
 
 ## Notes for judges

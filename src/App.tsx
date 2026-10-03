@@ -3,9 +3,11 @@ import { useMemo } from "react";
 import { Booth } from "./components/Booth";
 import { Chyron } from "./components/Chyron";
 import { Controls } from "./components/Controls";
+import { FinalReviewCard } from "./components/FinalReviewCard";
 import { PlayFeed } from "./components/PlayFeed";
 import { Scoreboard } from "./components/Scoreboard";
 import { Ticker } from "./components/Ticker";
+import { VerdictCard } from "./components/VerdictCard";
 import { useBroadcast } from "./hooks/useBroadcast";
 
 /**
@@ -23,6 +25,8 @@ export default function App() {
     loadError,
     stats,
     feed,
+    latestVerdicts,
+    finalReview,
     phase,
     balance,
     activeSpeaker,
@@ -37,6 +41,7 @@ export default function App() {
     impulseBuy,
     callHalftime,
     callPostgame,
+    startOver,
     toggleMute,
     reload,
     hasStarted,
@@ -97,6 +102,29 @@ export default function App() {
                 caption={caption}
                 browserVoice={browserVoice}
               />
+
+              {/* Verdict cards reveal after each segment's audio finishes. */}
+              {latestVerdicts.length > 0 && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {latestVerdicts.map((verdict) => {
+                    // Impulse buys swap their optimistic id for the server id
+                    // after the fact, so match on either the id or the verdict
+                    // object the hook stored on the feed entry.
+                    const entry = feed.find(
+                      (f) =>
+                        f.transaction.id === verdict.playId || f.verdict === verdict,
+                    );
+                    return entry ? (
+                      <VerdictCard
+                        key={verdict.playId}
+                        transaction={entry.transaction}
+                        verdict={verdict}
+                      />
+                    ) : null;
+                  })}
+                </div>
+              )}
+
               <Controls
                 onStart={startBroadcast}
                 onImpulseBuy={impulseBuy}
@@ -142,6 +170,25 @@ export default function App() {
             </span>
           ))}
         </div>
+
+        {/* TV network bug: the CHECKOUT CRITICS logo in the corner. */}
+        <div className="pointer-events-none fixed bottom-3 right-3 z-40 select-none text-right">
+          <div className="broadcast rounded bg-gradient-to-r from-gold to-gold-dim px-3 py-1 text-xs leading-none text-studio shadow-lg sm:text-sm">
+            Checkout Critics
+          </div>
+          <div className="broadcast mt-0.5 text-[8px] tracking-[0.3em] text-white/40">
+            WSD &bull; LIVE
+          </div>
+        </div>
+
+        {/* Postgame poster: final review scores, pull quote, and Start over. */}
+        {phase === "postgame" && finalReview && (
+          <FinalReviewCard
+            review={finalReview}
+            stats={stats}
+            onStartOver={startOver}
+          />
+        )}
       </div>
     </div>
   );

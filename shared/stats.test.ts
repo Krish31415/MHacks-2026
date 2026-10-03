@@ -6,6 +6,7 @@ import {
   balanceAfter,
   biggestPlay,
   computeStats,
+  criticsAverage,
   foodDeliveryStreak,
 } from "./stats";
 
@@ -78,4 +79,23 @@ test("balanceAfter ticks down as the broadcast replays history", () => {
   assert.equal(balanceAfter(plays, 100, 0), 100);
   assert.equal(balanceAfter(plays, 100, 1), 90);
   assert.equal(balanceAfter(plays, 100, 3), 40);
+});
+
+test("criticsAverage averages both critics across all verdicts, to one decimal", () => {
+  const verdicts = [
+    { scores: { PBP: 6, COLOR: 4 } },
+    { scores: { PBP: 5, COLOR: 2 } },
+  ];
+  // (6 + 4 + 5 + 2) / 4 = 4.25, rounded to ONE decimal per spec section 8.
+  assert.equal(criticsAverage(verdicts), 4.3);
+  assert.equal(criticsAverage([]), null);
+});
+
+test("computeStats folds verdicts into criticsAverage", () => {
+  const stats = computeStats([tx("Chipotle", 14.85, "restaurant", 1)], 1240, [
+    { scores: { PBP: 7, COLOR: 3 } },
+  ]);
+  // (7 + 3) / 2 = 5
+  assert.equal(stats.criticsAverage, 5);
+  assert.equal(computeStats([], 1240).criticsAverage, null);
 });

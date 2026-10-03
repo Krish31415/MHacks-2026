@@ -17,6 +17,10 @@ function buildTicker(stats: Stats): string[] {
     `PLAYS: ${stats.playsCount}`,
   ];
 
+  if (stats.criticsAverage != null) {
+    items.push(`CRITICS' AVERAGE: ${stats.criticsAverage.toFixed(1)}`);
+  }
+
   for (const [category, bucket] of Object.entries(stats.byCategory)) {
     if (bucket.count === 0) continue;
     items.push(

@@ -4,6 +4,7 @@ import type {
   Stats,
   Transaction,
   TransactionsResponse,
+  Verdict,
 } from "../shared/types";
 
 /**
@@ -36,8 +37,13 @@ export async function fetchCommentary(input: {
   plays: Transaction[];
   stats: Stats;
   mode: BroadcastMode;
+  verdicts?: Verdict[];
 }): Promise<{ commentary: CommentaryResponse; source: "gemini" | "canned" }> {
   return postJson("/api/commentate", input);
+}
+
+export async function resetSession(): Promise<{ ok: boolean }> {
+  return postJson("/api/reset", {});
 }
 
 export async function postPurchase(input: {

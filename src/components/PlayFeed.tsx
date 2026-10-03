@@ -54,6 +54,14 @@ export function PlayFeed({ feed }: { feed: FeedPlay[] }) {
                 {entry.transaction.merchant}
                 {entry.impulse && <span className="ml-1 text-[10px] text-red">IMPULSE</span>}
               </span>
+              {entry.verdict && (
+                <span
+                  className="broadcast shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[9px] tabular-nums text-white/80 sm:text-[10px]"
+                  title="Mike's score / Linda's score"
+                >
+                  M {entry.verdict.scores.PBP} / L {entry.verdict.scores.COLOR}
+                </span>
+              )}
               <span className="broadcast shrink-0 tabular-nums text-red">
                 -${entry.transaction.amount.toFixed(2)}
               </span>

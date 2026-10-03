@@ -171,12 +171,78 @@ body {
   width: max-content;
 }
 
+/* --- verdict card pop-in ------------------------------------------- */
+@keyframes verdict-pop {
+  0% {
+    transform: translateY(14px) scale(0.82);
+    opacity: 0;
+  }
+  70% {
+    transform: translateY(-3px) scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.animate-verdict {
+  animation: verdict-pop 420ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+/* --- thumbs flip in like a scoreboard graphic ---------------------- */
+@keyframes thumb-flip {
+  0% {
+    transform: rotateY(90deg) scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+}
+.animate-flip {
+  display: inline-block;
+  animation: thumb-flip 420ms ease-out both;
+}
+
+/* --- postgame poster reveal ---------------------------------------- */
+@keyframes poster-in {
+  0% {
+    transform: scale(0.86) translateY(18px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+.animate-poster {
+  animation: poster-in 520ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: fade-in 260ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-shake,
   .animate-tick,
   .animate-chyron,
   .animate-booth,
-  .animate-glow {
+  .animate-glow,
+  .animate-verdict,
+  .animate-flip,
+  .animate-poster,
+  .animate-fade {
     animation: none;
   }
 }

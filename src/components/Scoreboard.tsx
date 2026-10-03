@@ -48,6 +48,16 @@ export function Scoreboard({
           <div className="broadcast mt-0.5 text-[9px] text-white/50 sm:text-[11px]">
             DAY {dayCount} • {stats.playsCount} PLAYS
           </div>
+          {/* Critics' average: the running review score for the whole session. */}
+          <div className="mt-1 flex items-center gap-1">
+            <span className="broadcast text-[8px] tracking-widest text-white/45 sm:text-[10px]">
+              CRITICS&apos; AVG
+            </span>
+            <span className="broadcast rounded bg-gold/20 px-1.5 py-0.5 text-[11px] tabular-nums text-gold ring-1 ring-gold/40 sm:text-sm">
+              {stats.criticsAverage == null ? "—" : stats.criticsAverage.toFixed(1)}
+            </span>
+            <span className="broadcast text-[8px] text-white/30 sm:text-[10px]">/10</span>
+          </div>
         </div>
 
         {/* THE BANK */}
