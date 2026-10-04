@@ -103,10 +103,10 @@ export function Booth({
         })}
       </div>
 
-      {/* Caption strip: subtitles, not a card. Sized to be read at a glance from
-          across a room, which is the whole point of captioning a fast booth. */}
-      <div className="min-h-[92px] border-l-4 border-gold bg-black/70 px-4 py-4 text-center sm:min-h-[120px] sm:px-8 sm:py-6">
-        <p className="broadcast text-xl leading-snug text-white sm:text-4xl">
+      {/* Caption strip. Big enough to read while the booth talks over each
+          other, small enough that the booth and the feed keep the screen. */}
+      <div className="min-h-[60px] border-l-4 border-gold bg-black/70 px-4 py-3 text-center sm:min-h-[76px] sm:px-8 sm:py-4">
+        <p className="broadcast text-lg leading-snug text-white sm:text-2xl">
           {caption || "\u2026"}
         </p>
       </div>
