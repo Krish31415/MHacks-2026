@@ -64,6 +64,25 @@ Open http://localhost:5173 → **START BROADCAST**.
 | `npm run build` | typecheck + production Vite build → `dist/` |
 | `npm start` | serve `dist/` + API from one Node process |
 
+### Troubleshooting: `403 Restricted` in dev
+
+Vite refuses to serve files from any directory path that contains a colon
+(`isFileLoadingAllowed()` in Vite returns false on `path.includes(":")` *before*
+it consults `server.fs.allow`). If you cloned this into a folder like
+`Hackathons:Events/MHacks-2026`, plain dev mode 403s every request with "outside
+of Vite serving allow list".
+
+`vite.config.ts` detects a colon in the project path and relaxes
+`server.fs.strict` only in that case. If you would rather keep strict mode, drop
+the colon from the path and everything works untouched:
+
+```bash
+mv "/Users/you/Documents/Hackathons:Events" /Users/you/Documents/Hackathons-Events
+```
+
+`npm run build && npm start` is unaffected by this either way — the production
+Express server on :8787 does its own static file serving and has no such rule.
+
 ## API keys (all optional — every service degrades gracefully)
 
 | Key | Where | Without it |
