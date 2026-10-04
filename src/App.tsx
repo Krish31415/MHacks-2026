@@ -57,6 +57,7 @@ export default function App() {
     shakeKey,
     crowd,
     startBroadcast,
+    impulseBuy,
     callHalftime,
     callPostgame,
     startOver,
@@ -157,6 +158,7 @@ export default function App() {
               <Controls
                 onStart={startBroadcast}
                 onRestart={startOver}
+                onImpulseBuy={impulseBuy}
                 onHalftime={callHalftime}
                 onPostgame={callPostgame}
                 onTogglePause={togglePause}

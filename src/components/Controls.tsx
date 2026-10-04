@@ -54,6 +54,7 @@ function Key({
 export function Controls({
   onStart,
   onRestart,
+  onImpulseBuy,
   onHalftime,
   onPostgame,
   onToggleMute,
@@ -66,6 +67,7 @@ export function Controls({
 }: {
   onStart: () => void;
   onRestart: () => void;
+  onImpulseBuy: (merchant: string, amount: number, description?: string) => void;
   onHalftime: () => void;
   onPostgame: () => void;
   onToggleMute: () => void;
@@ -115,13 +117,25 @@ export function Controls({
 
       {/* IMPULSE BUY IS HIDDEN, NOT DELETED.
           It was 6 preset buttons, 2 inputs and a submit -- the single biggest
-          block of clutter on a console that already has six keys -- and it could
-          not fire in a 90-second demo anyway: a purchase queues behind every
-          play still ahead of it in the history, so the booth spent the whole
-          show narrating backfill and never reached the button.
-          The hook (impulseBuy) and the POST /api/purchase write path are both
-          intact. Restore by uncommenting the block below. If it comes back, make
-          it preempt the queue first, otherwise it is still unreachable. */}
+          block of clutter on a console that already carries six keys.
+
+          It is back as ONE key rather than six presets, because it now preempts:
+          the booth cuts off mid-sentence and reacts to this purchase
+          immediately, then resumes the backlog. That is the moment the whole app
+          exists for, so it gets the widest key on the console and nothing else.
+
+          Custom purchases (merchant + amount) were dropped to keep the console
+          readable; impulseBuy(merchant, amount, description) takes any of them. */}
+
+      {/* The money shot. Cuts the air -- same path as Halftime and Postgame. */}
+      <Key
+        label="Impulse Buy — DoorDash $28"
+        tone="red"
+        className="w-full py-3 text-base"
+        onClick={() =>
+          onImpulseBuy("DoorDash", 28, "impulse buy at DoorDash, 2am, regrets already")
+        }
+      />
 
       {/* Broadcast keys. Both of these cut the air immediately. */}
       <div className="grid grid-cols-3 gap-2">

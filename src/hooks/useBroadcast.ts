@@ -767,7 +767,48 @@ export function useBroadcast() {
     await pump();
   }, [data, pump, resurrectSynth]);
 
-  /** IMPULSE BUY: the money shot. Adds to the feed, then queues commentary. */
+  /**
+   * Cut the line that is on air and empty the queue. This is what makes
+   * HALFTIME / POSTGAME behave like real broadcast buttons: they take the air
+   * immediately instead of waiting for the current segment's audio to drain.
+   * Returns the new abort token.
+   *
+   * Declared above impulseBuy() because it needs to appear in that dep array,
+   * and referencing it from a callback defined earlier would be a TDZ error at
+   * render time, not just a stale closure.
+   */
+  const interrupt = useCallback(() => {
+    abortRef.current += 1;
+    queueRef.current = [];
+    const cancel = cancelLineRef.current;
+    cancelLineRef.current = null;
+    // Exactly one stop, and never a bare cancel() stacked on top of a tracked
+    // line: that second call used to land a microtask later -- after finish()
+    // had resolved and the runner had already begun the NEXT line -- chopping
+    // it off mid-word.
+    if (cancel) cancel();
+    else softStopSynth(() => {});
+    // Silence the mp3 path too. Nulling the handle without pausing leaves the
+    // old clip running on top of whatever starts next, which reads as "restart
+    // broke the audio" -- you get two shows at once.
+    activeAudioRef.current?.pause();
+    activeAudioRef.current = null;
+    setActiveSpeaker(null);
+    setPaused(false);
+    pausedRef.current = false;
+    pauseWaitersRef.current.splice(0).forEach((resolve) => resolve());
+    return abortRef.current;
+  }, [softStopSynth]);
+
+  /**
+   * IMPULSE BUY: the money shot. This one PREEMPTS.
+   *
+   * It used to append to the segment queue, which made it useless in practice --
+   * the purchase landed behind every play still ahead of it in the history, so
+   * a 90-second show never reached it. Now it cuts the line on air, takes the
+   * next slot, and the show resumes the backlog afterwards. A $28 DoorDash
+   * interrupting the booth mid-sentence is the whole point of the app.
+   */
   const impulseBuy = useCallback(
     async (merchant: string, amount: number, description?: string) => {
       const name = merchant.trim();
@@ -796,11 +837,21 @@ export function useBroadcast() {
       tickBalanceTo(displayBalanceRef.current - value);
       triggerEffects(5);
 
-      // Queued behind whatever is currently speaking: never interrupt a line.
-      queueRef.current.push({ plays: [optimistic], mode: "play", isImpulse: true });
+      // An impulse buy from the halftime desk is a Q2 play, not a halftime one.
+      if (!halftimeSeenRef.current) setPhase("q2");
+
       if (startedRef.current) {
-        setPhase("q2");
+        // Hold the backlog, cut the air, then jump the queue. interrupt() empties
+        // queueRef, so the pending segments are re-appended after this one; the
+        // runner drains in order either way, so the show picks up where it left
+        // off once the booth has reacted.
+        const backlog = queueRef.current;
+        interrupt();
+        queueRef.current = [{ plays: [optimistic], mode: "play", isImpulse: true }];
+        for (const segment of backlog) queueRef.current.push(segment);
         await pump();
+      } else {
+        queueRef.current.push({ plays: [optimistic], mode: "play", isImpulse: true });
       }
 
       // Persist to Nessie in the background; failure is harmless.
@@ -820,37 +871,8 @@ export function useBroadcast() {
         // Keep the optimistic entry: the demo still needs the play to exist.
       }
     },
-    [pump, tickBalanceTo, triggerEffects],
+    [interrupt, pump, tickBalanceTo, triggerEffects],
   );
-
-  /**
-   * Cut the line that is on air and empty the queue. This is what makes
-   * HALFTIME / POSTGAME behave like real broadcast buttons: they take the air
-   * immediately instead of waiting for the current segment's audio to drain.
-   * Returns the new abort token.
-   */
-  const interrupt = useCallback(() => {
-    abortRef.current += 1;
-    queueRef.current = [];
-    const cancel = cancelLineRef.current;
-    cancelLineRef.current = null;
-    // Exactly one stop, and never a bare cancel() stacked on top of a tracked
-    // line: that second call used to land a microtask later -- after finish()
-    // had resolved and the runner had already begun the NEXT line -- chopping
-    // it off mid-word.
-    if (cancel) cancel();
-    else softStopSynth(() => {});
-    // Silence the mp3 path too. Nulling the handle without pausing leaves the
-    // old clip running on top of whatever starts next, which reads as "restart
-    // broke the audio" -- you get two shows at once.
-    activeAudioRef.current?.pause();
-    activeAudioRef.current = null;
-    setActiveSpeaker(null);
-    setPaused(false);
-    pausedRef.current = false;
-    pauseWaitersRef.current.splice(0).forEach((resolve) => resolve());
-    return abortRef.current;
-  }, [softStopSynth]);
 
   const callHalftime = useCallback(async () => {
     interrupt();
