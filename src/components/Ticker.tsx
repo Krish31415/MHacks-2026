@@ -35,7 +35,7 @@ export function Ticker({ stats }: { stats: Stats }) {
   const items = buildTicker(stats);
 
   return (
-    <div className="overflow-hidden border-y-2 border-gold/50 bg-black/70 py-1.5">
+    <div className="overflow-hidden border-y-2 border-gold/50 bg-black/70 py-2">
       <div className="ticker-track animate-ticker">
         {/* Two identical runs make the -50% translation loop perfectly. */}
         {[0, 1].map((copy) => (
@@ -43,7 +43,7 @@ export function Ticker({ stats }: { stats: Stats }) {
             {items.map((item, i) => (
               <span
                 key={`${copy}-${i}`}
-                className="broadcast whitespace-nowrap px-4 text-xs text-gold/90 sm:text-sm"
+                className="broadcast whitespace-nowrap px-4 py-0.5 text-sm text-gold/90 sm:text-base"
               >
                 {item}
                 <span className="pl-4 text-red">{"\u{25C8}"}</span>

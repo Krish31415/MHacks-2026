@@ -100,7 +100,7 @@ export default function App() {
           {/* Data source badge */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <span
-              className={`broadcast px-2 py-1 text-[12px] ring-1 ring-inset sm:text-xs ${
+              className={`broadcast px-2 py-1 text-sm ring-1 ring-inset sm:text-sm ${
                 source === "nessie"
                   ? "bg-green-500/15 text-green-300 ring-green-400/40"
                   : "bg-amber-500/15 text-amber-300 ring-amber-400/40"
@@ -108,7 +108,7 @@ export default function App() {
             >
               {source === "nessie" ? "Live: Nessie" : "Offline: demo data"}
             </span>
-            <span className="broadcast text-[12px] tracking-[0.2em] text-white/35 sm:text-xs">
+            <span className="broadcast text-sm tracking-[0.2em] text-white/35 sm:text-sm">
               {data?.accountLabel ?? "loading\u2026"} &mdash; checkout critics
             </span>
           </div>
@@ -181,7 +181,7 @@ export default function App() {
             <p className="broadcast mt-6 text-center text-white/40">Warming up...</p>
           )}
 
-          <footer className="mt-6 text-center text-[12px] text-white/25">
+          <footer className="mt-6 text-center text-sm text-white/25">
             Built for MHacks 2026 with Nessie, Gemini, and ElevenLabs. Your balance
             is the score and you are losing.
           </footer>
@@ -207,10 +207,10 @@ export default function App() {
 
         {/* TV network bug: the CHECKOUT CRITICS logo in the corner. */}
         <div className="pointer-events-none fixed bottom-3 right-3 z-40 select-none text-right">
-          <div className="broadcast flag bg-gold px-4 py-1 text-xs leading-none text-studio sm:px-5 sm:text-sm">
+          <div className="broadcast flag bg-gold px-5 py-1.5 text-sm leading-none text-studio sm:px-6 sm:text-base">
             Checkout Critics
           </div>
-          <div className="broadcast mt-1 text-[8px] tracking-[0.3em] text-white/40">
+          <div className="broadcast mt-1 text-sm leading-none tracking-[0.3em] text-white/40 sm:text-base">
             checkout-critics.tech &bull; LIVE
           </div>
         </div>

@@ -20,7 +20,7 @@ export function FinalReviewCard({
   return (
     <div className="animate-fade fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
       <div className="animate-poster w-full max-w-xl border-4 border-gold bg-studio-2 p-5 text-center sm:p-8">
-        <div className="broadcast text-[12px] tracking-[0.45em] text-gold/70 sm:text-xs">
+        <div className="broadcast text-sm tracking-[0.45em] text-gold/70 sm:text-sm">
           Checkout Critics
         </div>
         <h2 className="broadcast mt-1 text-4xl leading-none text-gold sm:text-6xl">
@@ -37,7 +37,7 @@ export function FinalReviewCard({
           &ldquo;{review.pullQuote}&rdquo;
         </blockquote>
 
-        <div className="broadcast mt-4 text-[12px] tracking-[0.15em] text-white/40 sm:text-xs">
+        <div className="broadcast mt-4 text-sm tracking-[0.15em] text-white/40 sm:text-sm">
           Final score ${stats.currentBalance.toFixed(2)} &bull; {stats.playsCount} plays reviewed
         </div>
 
@@ -73,7 +73,7 @@ function FinalScore({
       <span className={`broadcast animate-verdict mt-1 text-5xl leading-none tabular-nums sm:text-7xl ${tone}`} style={{ animationDelay: delay }}>
         {score}
       </span>
-      <span className="broadcast text-[12px] tracking-[0.3em] text-white/50">{name}</span>
+      <span className="broadcast text-sm tracking-[0.3em] text-white/50">{name}</span>
     </div>
   );
 }

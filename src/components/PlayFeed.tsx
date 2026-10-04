@@ -34,9 +34,9 @@ export function PlayFeed({ feed }: { feed: FeedPlay[] }) {
           </span>
           Play Feed
         </span>
-        <span className="num text-[12px] text-white/30">{ordered.length}</span>
+        <span className="num text-sm text-white/30">{ordered.length}</span>
       </h2>
-      <ul className="min-h-0 flex-1 overflow-y-auto text-sm">
+      <ul className="min-h-0 flex-1 overflow-y-auto text-base">
         {ordered.length === 0 && (
           <li className="px-3 py-6 text-center text-white/40">No plays loaded.</li>
         )}
@@ -50,13 +50,13 @@ export function PlayFeed({ feed }: { feed: FeedPlay[] }) {
               } ${entry.status === "done" ? "" : "opacity-45"}`}
             >
               <span
-                className={`num w-6 shrink-0 text-right text-xs ${
+                className={`num w-7 shrink-0 text-right text-sm ${
                   live ? "text-gold" : "text-white/35"
                 }`}
               >
                 {String(entry.number).padStart(2, "0")}
               </span>
-              <span aria-hidden className="shrink-0 text-[12px]">
+              <span aria-hidden className="shrink-0 text-sm">
                 {CATEGORY_ICON[entry.transaction.category]}
               </span>
               <span
@@ -66,14 +66,14 @@ export function PlayFeed({ feed }: { feed: FeedPlay[] }) {
               >
                 {entry.transaction.merchant}
                 {entry.impulse && (
-                  <span className="ml-1.5 text-[12px] tracking-[0.15em] text-red">
+                  <span className="ml-1.5 text-sm tracking-[0.15em] text-red">
                     IMPULSE
                   </span>
                 )}
               </span>
               {entry.verdict && (
                 <span
-                  className="num shrink-0 text-[12px] text-white/55"
+                  className="num shrink-0 text-sm text-white/55"
                   title="Mike's score / Linda's score"
                 >
                   <span className="text-white/35">M</span> {entry.verdict.scores.PBP}

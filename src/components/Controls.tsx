@@ -42,7 +42,7 @@ function Key({
       type="button"
       onClick={onClick}
       aria-pressed={lit}
-      className={`broadcast border px-3 py-2 text-sm leading-none tracking-wider transition-all duration-100 active:translate-y-px active:brightness-125 ${TONE[tone]} ${
+      className={`broadcast border px-3 py-3 text-base leading-none tracking-wider transition-all duration-100 active:translate-y-px active:brightness-125 ${TONE[tone]} ${
         lit ? "ring-2 ring-inset ring-white/25" : ""
       } ${className}`}
     >
@@ -98,7 +98,7 @@ export function Controls({
                 paused ? "bg-gold" : busy ? "animate-blink bg-red" : "bg-white/20"
               }`}
             />
-            <span className="broadcast text-[12px] tracking-[0.3em] text-white/45">
+            <span className="broadcast text-sm tracking-[0.3em] text-white/45">
               {paused ? "HOLD" : busy ? "ON AIR" : "STANDBY"}
             </span>
           </div>

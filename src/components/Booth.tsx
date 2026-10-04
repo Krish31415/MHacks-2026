@@ -53,41 +53,47 @@ export function Booth({
           return (
             <div
               key={c.speaker}
-              className={`broadcast relative px-3 py-4 text-center ring-1 ring-inset transition-all duration-200 sm:px-6 sm:py-6 ${
+              className={`broadcast relative px-3 py-5 text-center ring-1 ring-inset transition-all duration-200 sm:px-6 sm:py-7 ${
                 isActive
                   ? `animate-booth animate-glow ring-2 ${c.frame}`
-                  : "bg-white/[0.02] ring-white/10 opacity-55"
+                  : "bg-white/[0.04] ring-white/15"
               }`}
             >
               {/* On-air lamp */}
               <span
                 aria-hidden
-                className={`absolute right-2 top-2 h-2.5 w-2.5 sm:right-3 sm:top-3 ${
-                  isActive ? "animate-blink bg-red" : "bg-white/15"
+                className={`absolute right-2.5 top-2.5 h-3 w-3 sm:right-4 sm:top-4 ${
+                  isActive ? "animate-blink bg-red" : "bg-white/25"
                 }`}
               />
 
-              <span className="text-3xl sm:text-5xl">{c.avatar}</span>
+              <span className={`block text-4xl sm:text-6xl ${isActive ? "" : "opacity-70"}`}>
+                {c.avatar}
+              </span>
               <div
-                className={`mt-1 text-lg leading-tight sm:text-3xl ${
-                  isActive ? c.text : "text-white/70"
+                className={`mt-2 text-2xl leading-tight sm:text-4xl ${
+                  isActive ? c.text : "text-white/80"
                 }`}
               >
                 {c.name}
               </div>
-              <div className="text-[12px] tracking-[0.25em] text-white/40 sm:text-[12px]">
+              <div
+                className={`mt-1.5 text-sm tracking-[0.25em] sm:text-base ${
+                  isActive ? "text-white/60" : "text-white/45"
+                }`}
+              >
                 {c.role}
               </div>
 
               {/* Level meter: only the speaker holding the mic. */}
               <div
                 aria-hidden
-                className={`mt-2 flex h-4 items-end justify-center gap-[3px] ${c.text}`}
+                className={`mt-3 flex h-5 items-end justify-center gap-[4px] ${c.text}`}
               >
                 {[0, 1, 2, 3, 4].map((i) => (
                   <span
                     key={i}
-                    className={`w-[3px] bg-current ${isActive ? "eq-bar" : "h-1 opacity-20"}`}
+                    className={`w-1 bg-current ${isActive ? "eq-bar" : "h-1.5 opacity-30"}`}
                     style={isActive ? { animationDelay: `${i * 110}ms` } : undefined}
                   />
                 ))}
@@ -97,22 +103,21 @@ export function Booth({
         })}
       </div>
 
-      {/* Caption strip: subtitles, not a card. */}
-      <div className="min-h-[76px] border-l-4 border-gold bg-black/70 px-4 py-3 text-center sm:min-h-[92px] sm:px-8 sm:py-5">
-        <p className="broadcast text-lg leading-snug text-white/95 sm:text-3xl">
+      {/* Caption strip: subtitles, not a card. Sized to be read at a glance from
+          across a room, which is the whole point of captioning a fast booth. */}
+      <div className="min-h-[92px] border-l-4 border-gold bg-black/70 px-4 py-4 text-center sm:min-h-[120px] sm:px-8 sm:py-6">
+        <p className="broadcast text-xl leading-snug text-white sm:text-4xl">
           {caption || "\u2026"}
         </p>
       </div>
 
       {browserVoice && (
         <div className="text-center">
-          <p className="broadcast text-[12px] tracking-[0.2em] text-amber-300/80">
+          <p className="broadcast text-sm tracking-[0.2em] text-amber-300/90">
             browser voices &mdash; elevenlabs unavailable
           </p>
           {ttsReason && (
-            <p className="mt-0.5 text-[12px] tracking-wide text-amber-200/50">
-              {ttsReason}
-            </p>
+            <p className="mt-1 text-sm tracking-wide text-amber-200/60">{ttsReason}</p>
           )}
         </div>
       )}

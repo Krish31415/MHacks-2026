@@ -26,11 +26,11 @@ export function VerdictCard({
   return (
     <div className="broadcast animate-verdict relative border border-gold/60 bg-panel px-3 py-2 text-center">
       {split && (
-        <div className="flag animate-blink mb-1.5 bg-red px-3 py-0.5 text-[12px] tracking-[0.2em] text-white">
+        <div className="flag animate-blink mb-1.5 bg-red px-3 py-0.5 text-sm tracking-[0.2em] text-white">
           Split Decision
         </div>
       )}
-      <div className="truncate text-[12px] text-white/60 sm:text-xs">
+      <div className="truncate text-sm text-white/60 sm:text-sm">
         {transaction.merchant} <span className="text-red">-${transaction.amount.toFixed(2)}</span>
       </div>
       <div className="mt-1 flex items-center justify-center gap-3 sm:gap-5">
@@ -62,7 +62,7 @@ function CriticScore({
       <span className={`animate-verdict text-2xl leading-none tabular-nums sm:text-3xl ${tone}`} style={{ animationDelay: delay }}>
         {score}
       </span>
-      <span className="text-[12px] tracking-widest text-white/40 sm:text-[12px]">{name}</span>
+      <span className="text-sm tracking-widest text-white/40 sm:text-sm">{name}</span>
     </div>
   );
 }
