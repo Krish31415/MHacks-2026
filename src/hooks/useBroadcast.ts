@@ -493,7 +493,9 @@ export function useBroadcast() {
                 voices.find((v) => v.lang.startsWith("en") && v.name.toLowerCase().includes("female")) ??
                 voices.find((v) => v.lang.startsWith("en"));
         if (pick) utterance.voice = pick;
-        utterance.rate = line.speaker === "PBP" ? 1.08 : 0.96;
+        // Matches the ElevenLabs presets above (PBP 1.2, COLOR 1.15). Every line
+        // is captioned, so the announcers can afford to read fast.
+        utterance.rate = line.speaker === "PBP" ? 1.2 : 1.12;
         utterance.pitch = line.speaker === "PBP" ? 1.1 : 0.9;
 
         // Logged per line so the voice in use is never a guess, and so you can

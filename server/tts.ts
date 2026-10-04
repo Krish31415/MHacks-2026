@@ -24,7 +24,20 @@ import {
 const TTS_BASE_URL = "https://api.elevenlabs.io";
 const TIMEOUT_MS = 10000;
 
-/** Distinct delivery per announcer: Mike is a man shouting, Linda is ice. */
+/**
+ * Distinct delivery per announcer.
+ *
+ * Notes, because these numbers are easy to get subtly wrong:
+ * - `use_speaker_boost` adds room ambience. It made Linda sound like she was
+ *   talking from the back of a hall, so she runs with it OFF and Mike with it ON
+ *   -- which is also the right characterisation: he's on the stadium mic, she's
+ *   at the desk.
+ * - High stability flattens the delivery further and reads as distant. Linda is
+ *   mid-stability so she still sounds dry and close without going monotone.
+ * - Speed is capped at 1.2 by the API. Both are now near the ceiling because the
+ *   booth captions every line, so the announcers can read fast without the
+ *   viewer losing the words.
+ */
 const VOICE_PRESETS: Record<
   Speaker,
   {
@@ -37,19 +50,19 @@ const VOICE_PRESETS: Record<
 > = {
   // Energetic male PBP: low stability + high style = loud, breathless.
   PBP: {
-    stability: 0.28,
-    similarity_boost: 0.8,
-    style: 0.85,
+    stability: 0.25,
+    similarity_boost: 0.85,
+    style: 0.9,
     use_speaker_boost: true,
-    speed: 1.14,
+    speed: 1.2,
   },
-  // Dry color commentator: high stability, zero style = deadpan.
+  // Dry color commentator: close, clipped, and no room around her.
   COLOR: {
-    stability: 0.72,
-    similarity_boost: 0.75,
-    style: 0.1,
-    use_speaker_boost: true,
-    speed: 0.96,
+    stability: 0.42,
+    similarity_boost: 0.88,
+    style: 0.35,
+    use_speaker_boost: false,
+    speed: 1.15,
   },
 };
 

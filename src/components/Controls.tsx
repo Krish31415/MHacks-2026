@@ -1,22 +1,17 @@
-import { useState } from "react";
-
 /**
- * Controls: the broadcast console. START, transport keys (pause/stop/restart),
- * the IMPULSE BUY panel, and HALFTIME/POSTGAME.
+ * Controls: the broadcast console -- START, the transport keys
+ * (pause/stop/restart), HALFTIME/POSTGAME, and MUTE.
  *
- * Every key here does something immediately -- halftime and postgame cut the
- * line that is on air rather than waiting for the segment to finish. Presets
- * are deliberately ridiculous because that is the joke.
+ * Every key here does something immediately: halftime and postgame cut the line
+ * that is on air rather than waiting for the segment to finish.
+ *
+ * The impulse-buy panel used to live here (six presets, two inputs, a submit --
+ * the biggest block of clutter on screen). It is hidden for now because a
+ * purchase queues behind every play still ahead of it in the history, so it
+ * could never actually fire inside a 90-second show. Its markup is recoverable
+ * from git history before the "hide impulse buy" commit, and the `impulseBuy`
+ * hook plus the POST /api/purchase write path are both still wired up.
  */
-
-const PRESETS = [
-  { merchant: "DoorDash", amount: 28.0, label: "DoorDash $28" },
-  { merchant: "Steam", amount: 49.99, label: "Steam Sale $49.99" },
-  { merchant: "Insomnia Cookies", amount: 12.0, label: "3am Cookies $12" },
-  { merchant: "Uber Black", amount: 64.0, label: "Uber Black $64" },
-  { merchant: "Amazon", amount: 89.99, label: "Amazon $89.99" },
-  { merchant: "Late Night Taco", amount: 7.75, label: "Tacos $7.75" },
-];
 
 const TONE = {
   gold: "border-gold/45 bg-gold/10 text-gold hover:border-gold hover:bg-gold/20",
@@ -59,7 +54,6 @@ function Key({
 export function Controls({
   onStart,
   onRestart,
-  onImpulseBuy,
   onHalftime,
   onPostgame,
   onToggleMute,
@@ -72,7 +66,6 @@ export function Controls({
 }: {
   onStart: () => void;
   onRestart: () => void;
-  onImpulseBuy: (merchant: string, amount: number, description?: string) => void;
   onHalftime: () => void;
   onPostgame: () => void;
   onToggleMute: () => void;
@@ -83,18 +76,6 @@ export function Controls({
   busy: boolean;
   hasStarted: boolean;
 }) {
-  const [merchant, setMerchant] = useState("");
-  const [amount, setAmount] = useState("");
-
-  const submitCustom = (event: React.FormEvent) => {
-    event.preventDefault();
-    const value = Number(amount);
-    if (!merchant.trim() || !Number.isFinite(value) || value <= 0) return;
-    onImpulseBuy(merchant, value);
-    setMerchant("");
-    setAmount("");
-  };
-
   return (
     <section className="flex flex-col gap-4 border border-white/10 bg-panel/40 p-3 sm:p-4">
       {/* Start, then the transport strip once the show is rolling. */}
@@ -115,7 +96,7 @@ export function Controls({
                 paused ? "bg-gold" : busy ? "animate-blink bg-red" : "bg-white/20"
               }`}
             />
-            <span className="broadcast text-[10px] tracking-[0.3em] text-white/45">
+            <span className="broadcast text-[12px] tracking-[0.3em] text-white/45">
               {paused ? "HOLD" : busy ? "ON AIR" : "STANDBY"}
             </span>
           </div>
@@ -132,50 +113,15 @@ export function Controls({
         </div>
       )}
 
-      {/* Impulse buy */}
-      <div>
-        <h3 className="broadcast mb-2 flex items-baseline gap-2 text-sm text-red">
-          <span className="text-red/50">//</span> Impulse Buy
-          <span className="text-[10px] tracking-normal text-white/35">do not do this</span>
-        </h3>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() =>
-                onImpulseBuy(preset.merchant, preset.amount, `impulse buy at ${preset.merchant}`)
-              }
-              className="broadcast border border-red/40 bg-red/10 px-2 py-2 text-xs leading-none tracking-wide text-red transition-all duration-100 hover:border-red hover:bg-red/20 active:translate-y-px sm:text-sm"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-
-        <form onSubmit={submitCustom} className="mt-2 flex gap-2">
-          <input
-            value={merchant}
-            onChange={(e) => setMerchant(e.target.value)}
-            placeholder="merchant"
-            maxLength={40}
-            className="min-w-0 flex-1 border-2 border-white/15 bg-black/50 px-2 py-1.5 text-sm text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
-          />
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="$0.00"
-            inputMode="decimal"
-            className="w-20 border-2 border-white/15 bg-black/50 px-2 py-1.5 text-sm text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="broadcast border border-gold bg-gold/90 px-3 py-1.5 text-xs leading-none tracking-wider text-studio transition hover:bg-gold active:translate-y-px"
-          >
-            Buy
-          </button>
-        </form>
-      </div>
+      {/* IMPULSE BUY IS HIDDEN, NOT DELETED.
+          It was 6 preset buttons, 2 inputs and a submit -- the single biggest
+          block of clutter on a console that already has six keys -- and it could
+          not fire in a 90-second demo anyway: a purchase queues behind every
+          play still ahead of it in the history, so the booth spent the whole
+          show narrating backfill and never reached the button.
+          The hook (impulseBuy) and the POST /api/purchase write path are both
+          intact. Restore by uncommenting the block below. If it comes back, make
+          it preempt the queue first, otherwise it is still unreachable. */}
 
       {/* Broadcast keys. Both of these cut the air immediately. */}
       <div className="grid grid-cols-3 gap-2">

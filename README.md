@@ -25,7 +25,7 @@ Nessie purchases ──▶ Express API ──▶ stats engine (pure TS, unit-tes
                               └──────────┬──────────┘
                                          ▼
                         React broadcast: scoreboard, booth, chyron,
-                        play feed, ticker tape, impulse-buy panel
+                        play feed, ticker tape
 ```
 
 **Anti-hallucination rule:** every dollar figure the booth says is computed by
@@ -243,7 +243,7 @@ immediately.
 | **Halftime** | Jumps straight to a trend report. **Cuts the current line** instead of waiting for the segment to finish. |
 | **Postgame** | Jumps straight to the final review poster. Also cuts the air immediately. |
 | **Mute** | Silent playback — lines still advance on a timed cadence so the visuals stay in sync. |
-| **Impulse Buy** | Adds a play instantly, queues its commentary behind the current line (never interrupts a sentence), then writes it back to Nessie. |
+| **Impulse Buy** | *Hidden for now.* A purchase queues behind every play still ahead of it in the history, so it could never fire inside a 90-second show. The hook and the `POST /api/purchase` write path are both still live. |
 
 Phase tracking is derived from the segments themselves, so the scoreboard
 reads `Q1` before halftime and `Q2` after it — it never gets stuck on
@@ -254,12 +254,12 @@ reads `Q1` before halftime and `Q2` after it — it never gets stuck on
 1. `npm run dev`, open the client, point at the `OFFLINE/LIVE` badge.
 2. Hit **START BROADCAST** — history replays as plays, balance ticks down,
    halftime report lands mid-show.
-3. Mid-sentence, hit **DoorDash $28** (or any Impulse Buy) — the play appears
-   instantly, commentary queues behind the current line, screen shakes, and a
-   verdict card pops in with both critics' scores.
-4. Hit **Pause** to hold the show mid-word, then **Resume**. Hit **Postgame**
-   for the poster-style final review: whole-run scores, thumbs, a movie-poster
-   pull quote, and a working **Start over**.
+3. Let the show run — it replays your real purchase history play by play while
+   the commentators score each one, with a halftime report spliced in at the
+   midpoint and a **SPLIT DECISION** badge whenever the two critics disagree by 4+
+   points. Hit **Pause** to hold the show mid-word, then **Resume**.
+4. Hit **Postgame** for the poster-style final review: whole-run scores, thumbs,
+   a movie-poster pull quote, and a working **Start over**.
 5. Talking points: stats engine vs LLM math, Nessie write-back (check the
    Nessie console — sparse accounts get seeded with the demo history),
    TTS cache (repeat lines cost nothing).

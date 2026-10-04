@@ -14,7 +14,7 @@ export function Chyron({ text }: { text: string | null }) {
         key={text}
         className="animate-chyron flag flex items-stretch pr-4 sm:pr-6"
       >
-        <span className="broadcast flex shrink-0 items-center bg-gold px-4 text-[10px] tracking-[0.3em] text-studio sm:px-5 sm:text-xs">
+        <span className="broadcast flex shrink-0 items-center bg-gold px-4 text-[12px] tracking-[0.3em] text-studio sm:px-5 sm:text-xs">
           CC
         </span>
         <span className="broadcast flex min-w-0 items-center truncate bg-black/85 pl-4 pr-3 text-sm text-white sm:pl-5 sm:text-lg">

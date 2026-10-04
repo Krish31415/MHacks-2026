@@ -75,7 +75,7 @@ export function Booth({
               >
                 {c.name}
               </div>
-              <div className="text-[9px] tracking-[0.25em] text-white/40 sm:text-[11px]">
+              <div className="text-[12px] tracking-[0.25em] text-white/40 sm:text-[12px]">
                 {c.role}
               </div>
 
@@ -106,11 +106,11 @@ export function Booth({
 
       {browserVoice && (
         <div className="text-center">
-          <p className="broadcast text-[10px] tracking-[0.2em] text-amber-300/80">
+          <p className="broadcast text-[12px] tracking-[0.2em] text-amber-300/80">
             browser voices &mdash; elevenlabs unavailable
           </p>
           {ttsReason && (
-            <p className="mt-0.5 text-[10px] tracking-wide text-amber-200/50">
+            <p className="mt-0.5 text-[12px] tracking-wide text-amber-200/50">
               {ttsReason}
             </p>
           )}

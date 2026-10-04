@@ -34,7 +34,7 @@ export function PlayFeed({ feed }: { feed: FeedPlay[] }) {
           </span>
           Play Feed
         </span>
-        <span className="num text-[10px] text-white/30">{ordered.length}</span>
+        <span className="num text-[12px] text-white/30">{ordered.length}</span>
       </h2>
       <ul className="min-h-0 flex-1 overflow-y-auto text-sm">
         {ordered.length === 0 && (
@@ -56,7 +56,7 @@ export function PlayFeed({ feed }: { feed: FeedPlay[] }) {
               >
                 {String(entry.number).padStart(2, "0")}
               </span>
-              <span aria-hidden className="shrink-0 text-[11px]">
+              <span aria-hidden className="shrink-0 text-[12px]">
                 {CATEGORY_ICON[entry.transaction.category]}
               </span>
               <span
@@ -66,14 +66,14 @@ export function PlayFeed({ feed }: { feed: FeedPlay[] }) {
               >
                 {entry.transaction.merchant}
                 {entry.impulse && (
-                  <span className="ml-1.5 text-[9px] tracking-[0.15em] text-red">
+                  <span className="ml-1.5 text-[12px] tracking-[0.15em] text-red">
                     IMPULSE
                   </span>
                 )}
               </span>
               {entry.verdict && (
                 <span
-                  className="num shrink-0 text-[10px] text-white/55"
+                  className="num shrink-0 text-[12px] text-white/55"
                   title="Mike's score / Linda's score"
                 >
                   <span className="text-white/35">M</span> {entry.verdict.scores.PBP}

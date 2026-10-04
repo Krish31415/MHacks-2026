@@ -57,7 +57,6 @@ export default function App() {
     shakeKey,
     crowd,
     startBroadcast,
-    impulseBuy,
     callHalftime,
     callPostgame,
     startOver,
@@ -100,7 +99,7 @@ export default function App() {
           {/* Data source badge */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <span
-              className={`broadcast px-2 py-1 text-[10px] ring-1 ring-inset sm:text-xs ${
+              className={`broadcast px-2 py-1 text-[12px] ring-1 ring-inset sm:text-xs ${
                 source === "nessie"
                   ? "bg-green-500/15 text-green-300 ring-green-400/40"
                   : "bg-amber-500/15 text-amber-300 ring-amber-400/40"
@@ -108,7 +107,7 @@ export default function App() {
             >
               {source === "nessie" ? "Live: Nessie" : "Offline: demo data"}
             </span>
-            <span className="broadcast text-[10px] tracking-[0.2em] text-white/35 sm:text-xs">
+            <span className="broadcast text-[12px] tracking-[0.2em] text-white/35 sm:text-xs">
               {data?.accountLabel ?? "loading\u2026"} &mdash; checkout critics
             </span>
           </div>
@@ -158,7 +157,6 @@ export default function App() {
               <Controls
                 onStart={startBroadcast}
                 onRestart={startOver}
-                onImpulseBuy={impulseBuy}
                 onHalftime={callHalftime}
                 onPostgame={callPostgame}
                 onTogglePause={togglePause}
@@ -181,7 +179,7 @@ export default function App() {
             <p className="broadcast mt-6 text-center text-white/40">Warming up...</p>
           )}
 
-          <footer className="mt-6 text-center text-[10px] text-white/25">
+          <footer className="mt-6 text-center text-[12px] text-white/25">
             Built for MHacks 2026 with Nessie, Gemini, and ElevenLabs. Your balance
             is the score and you are losing.
           </footer>
