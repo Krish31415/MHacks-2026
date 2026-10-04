@@ -47,7 +47,7 @@ function mergeWithSession(transactions: Transaction[]): Transaction[] {
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    service: "wallet-sports-desk",
+    service: "checkout-critics",
     config: configStatus(),
     sessionPurchases: sessionPurchases.length,
   });
@@ -241,6 +241,6 @@ if (existsSync(distDir)) {
 }
 
 app.listen(PORT, () => {
-  console.log(`[server] Wallet Sports Desk API on http://localhost:${PORT}`);
+  console.log(`[server] Checkout Critics API on http://localhost:${PORT}`);
   console.log(`[server] config:`, configStatus());
 });

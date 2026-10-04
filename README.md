@@ -1,4 +1,6 @@
-# Checkout Critics — Wallet Sports Desk
+# Checkout Critics
+
+**Live at [checkout-critics.tech](https://checkout-critics.tech)**
 
 Two AI sports commentators call your bank account like a championship game.
 **Your balance is the score and you are losing.**
@@ -83,6 +85,73 @@ mv "/Users/you/Documents/Hackathons:Events" /Users/you/Documents/Hackathons-Even
 `npm run build && npm start` is unaffected by this either way — the production
 Express server on :8787 does its own static file serving and has no such rule.
 
+### Notes on the audio
+
+Two completely different engines with very different failure modes.
+
+**ElevenLabs (primary).** Each line is a real mp3 decoded by the browser, so it
+can be faded out before it's discarded — no hard cut, no click. The gain is
+ridden down over the last 90 ms of every clip, driven off `currentTime` so it
+freezes correctly while paused. **If you hear a click with this key present,
+something is broken** — this path cannot produce one. Check that `POST /api/tts`
+returns `200` / `audio/mpeg` and not `503`.
+
+**Browser voices (fallback, only if ElevenLabs is unavailable).** This path is
+genuinely clicky, and none of it is fixable in JS: `speechSynthesis` has no
+graceful stop, so `cancel()` severs the output stream at whatever amplitude it
+happens to be at, on every interrupt, and macOS renders that as a pop. Three
+things soften it, each independently switchable from the URL bar so you can
+bisect which one actually matters on your machine:
+
+| Param | Effect |
+|---|---|
+| `?nopause=1` | Stop appending the trailing ` …` that gives the engine room to fade |
+| `?nogap=1` | Stop pausing between lines so the output buffer can drain |
+| `?gap=300` | Tune the inter-line gap in ms (default 180) |
+| `?novoice=1` | Let the engine pick its own default voice |
+| `?voice=Alex` | Force one voice for both critics (partial name match) |
+| `?pbp=Alex&color=Samantha` | Force each critic separately |
+
+Every fallback line logs the voice it actually used:
+
+```
+[audio] PBP -> Daniel | "…twenty eight dollars and forty cents …"
+```
+
+Two more behaviours worth knowing: interrupts ride the global volume down to
+zero over ~70 ms before cutting, and **the stop operations are serialised** —
+`speechSynthesis.volume` is global and persists between calls, so overlapping
+interrupts used to ratchet the master volume toward silence. Also, watchdogs
+count unpaused time only, so holding the show on Pause can never swallow the
+rest of a line.
+
+#### Debugging the click (browser voices only)
+
+`speechSynthesis` has no graceful stop — `cancel()` severs the output stream at
+whatever amplitude it happens to be at. Three things soften that, and each can be
+switched off independently from the URL bar so you can bisect which one actually
+matters on your machine:
+
+| Param | Effect |
+|---|---|
+| `?nopause=1` | Stop appending the trailing ` …` that gives the engine room to fade |
+| `?nogap=1` | Stop pausing between lines so the output buffer can drain |
+| `?gap=300` | Tune the inter-line gap in ms (default 180) |
+| `?novoice=1` | Let the engine pick its own default voice |
+| `?voice=Alex` | Force one voice for both critics (partial name match) |
+| `?pbp=Alex&color=Samantha` | Force each critic separately |
+
+Every line logs the voice it actually used to the console:
+
+```
+[audio] PBP -> Daniel | "…twenty eight dollars and forty cents …"
+```
+
+So if the click tracks one specific voice, you'll see it immediately in the log
+rather than guessing. If it survives all of the above, it is the engine — the
+mp3 path (`ELEVENLABS_API_KEY`) has no equivalent problem, because a decoded
+buffer can be faded out before it is discarded.
+
 ## API keys (all optional — every service degrades gracefully)
 
 | Key | Where | Without it |
@@ -91,8 +160,80 @@ Express server on :8787 does its own static file serving and has no such rule.
 | `GEMINI_API_KEY` | Google AI Studio | canned lines from `server/canned.ts` |
 | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_PBP` + `ELEVENLABS_VOICE_COLOR` | elevenlabs.io/app/voices | browser `speechSynthesis` with two distinct voices |
 
-Defaults that already work: `GEMINI_MODEL=gemini-3.8-flash`,
-`ELEVENLABS_TTS_MODEL=eleven_flash_v2_5`, `PORT=8787`.
+### Model tiers: cheap while you build, big on demo day
+
+Development runs on the **cheapest tier that works**, so you are not paying for
+commentary nobody is grading. Flip to the big models right before you present.
+
+| | Development | Demo day |
+|---|---|---|
+| Commentary | `GEMINI_MODEL=gemini-3.5-flash-lite` | `GEMINI_MODEL=gemini-3.8-flash` |
+| Voice | `eleven_flash_v2_5` (already the cheapest) | `eleven_v3` / `eleven_multilingual_v2` |
+
+Both are one env var away — see `.env.example`. `MODEL_FALLBACKS` in
+`server/gemini.ts` walks *in whichever direction that points*: cheap → pricier
+while you develop, and big → cheaper if the headline model is saturated
+mid-pitch, so a 503 never silently drops the booth to canned lines.
+
+> `gemini-2.5-flash-lite` is retired for new users (404s) and
+> `gemini-3.8-flash-lite` does not exist. Both are verified against a live key.
+
+### Nessie: it works, and it writes
+
+Live end to end: `GET /api/transactions` returns `source: "nessie"` with real
+records read out of a real account, and **Impulse Buy POSTs straight into
+Nessie** (`persisted: true`). The server creates its own customer, account,
+merchants and purchase history on first run, then reads it all back — so a
+judge can open the Nessie console and see the booth's data.
+
+Four things the docs don't tell you, all verified against the live API:
+
+1. **Accounts are created under the customer** — `POST /customers/{id}/accounts`.
+   `POST /accounts` is not a route; it lands on another backend and answers
+   `403 Missing Authentication Token`, which reads exactly like a bad API key.
+2. **`type` is a closed enum** — `'Credit Card' | 'Savings' | 'Checking'`, and
+   `rewards` is required even though we never use it.
+3. **Purchases want snake_case and lowercase enums** — `merchant_id`,
+   `medium: 'balance'`, `status: 'completed'`, and the date field is
+   `purchase_date`. Sending `date` is rejected as an extra field.
+4. **Writes wrap the response** — `{ code, message, objectCreated: {...} }`, so
+   `created._id` is `undefined` unless you unwrap it. This one is silent: the
+   purchase is created, then the next call fails on a missing `merchant_id`.
+
+Two unavoidable quirks worth knowing before you demo:
+
+- **Amounts are integers.** Nessie stores `-12.34` as `-12`, so cents do not
+  survive the round trip. Fine for a sports broadcast, worth a shrug in a
+  finance context.
+- **`GET /merchants` (the list) is unusable.** It validates every merchant
+  record on the key and 400s the entire response if any single one is
+  malformed. The code never calls it — merchant names are resolved one at a
+  time via `GET /merchants/{id}`, which is unaffected. If you ever create a
+  merchant by hand in the console, give it a full street address.
+
+> Restart the server after editing `.env`. `tsx watch` only watches `.ts` files,
+> so without a restart your new keys are silently ignored and you spend an hour
+> debugging a model that was never called.
+
+## Show controls
+
+The console is a real transport, not a set of static buttons. Every key acts
+immediately.
+
+| Key | Behaviour |
+|---|---|
+| **Start Broadcast** | Replays your history, 2 plays per segment, halftime spliced in at the midpoint. |
+| **Pause / Resume** | Freezes the line that is on air mid-word (audio element or browser voice) and parks the segment runner. Nothing advances until you resume. |
+| **Stop** | Cuts the air and empties the queue. Emergency brake. |
+| **Restart** | Full reset: clears verdicts, scores, the impulse feed, and reloads the book. |
+| **Halftime** | Jumps straight to a trend report. **Cuts the current line** instead of waiting for the segment to finish. |
+| **Postgame** | Jumps straight to the final review poster. Also cuts the air immediately. |
+| **Mute** | Silent playback — lines still advance on a timed cadence so the visuals stay in sync. |
+| **Impulse Buy** | Adds a play instantly, queues its commentary behind the current line (never interrupts a sentence), then writes it back to Nessie. |
+
+Phase tracking is derived from the segments themselves, so the scoreboard
+reads `Q1` before halftime and `Q2` after it — it never gets stuck on
+`HALFTIME` while plays keep running.
 
 ## Demo script (90 seconds)
 
@@ -102,8 +243,9 @@ Defaults that already work: `GEMINI_MODEL=gemini-3.8-flash`,
 3. Mid-sentence, hit **DoorDash $28** (or any Impulse Buy) — the play appears
    instantly, commentary queues behind the current line, screen shakes, and a
    verdict card pops in with both critics' scores.
-4. Hit **Postgame** for the poster-style final review: whole-run scores, thumbs,
-   a movie-poster pull quote, and a working **Start over**.
+4. Hit **Pause** to hold the show mid-word, then **Resume**. Hit **Postgame**
+   for the poster-style final review: whole-run scores, thumbs, a movie-poster
+   pull quote, and a working **Start over**.
 5. Talking points: stats engine vs LLM math, Nessie write-back (check the
    Nessie console — sparse accounts get seeded with the demo history),
    TTS cache (repeat lines cost nothing).

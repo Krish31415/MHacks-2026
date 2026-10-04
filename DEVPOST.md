@@ -39,4 +39,4 @@ React, from-scratch Express (TypeScript, `tsx`), Vite, Tailwind CSS, Capital One
 ## Links
 
 - Repo: https://github.com/Krish31415/MHacks-2026
-- Live demo (target): https://checkoutcritics.tech
+- Live demo (target): https://checkout-critics.tech
