@@ -220,10 +220,30 @@ function parseCommentary(text: string, plays: Transaction[], stats: Stats, mode:
   return { lines, chyron, verdicts: [], finalReview };
 }
 
-async function callGemini(plays: Transaction[], stats: Stats, mode: BroadcastMode, verdictsSoFar: Verdict[]): Promise<CommentaryResponse | null> {
+/**
+ * Ordered cheapest-model-first. During development GEMINI_MODEL is a
+ * *-flash-lite tier and this walks upward, so we stay on cheap models. Switch
+ * GEMINI_MODEL to the big model for the actual pitch and the same list walks
+ * DOWNWARD instead, which is what you want live: never silently downgrade the
+ * commentary because the headline model was momentarily saturated.
+ */
+const MODEL_FALLBACKS = [
+  "gemini-flash-lite-latest",
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash-lite",
+  "gemini-3.8-flash",
+];
+
+async function callGemini(
+  plays: Transaction[],
+  stats: Stats,
+  mode: BroadcastMode,
+  verdictsSoFar: Verdict[],
+  model: string,
+): Promise<CommentaryResponse | null> {
   const ai = getClient();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model,
     contents: buildPrompt(plays, stats, mode),
     config: {
       systemInstruction: SYSTEM_PROMPT,
@@ -269,15 +289,15 @@ export async function generateCommentary(input: {
   const cached = cache.get(cacheKey);
   if (cached) return { commentary: cached, source: "gemini" };
   if (!geminiConfigured) return { commentary: fallbackFor(plays, stats, mode, verdicts), source: "canned" };
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (const model of [GEMINI_MODEL, ...MODEL_FALLBACKS.filter((m) => m !== GEMINI_MODEL)]) {
     try {
-      const result = await callGemini(plays, stats, mode, verdicts);
+      const result = await callGemini(plays, stats, mode, verdicts, model);
       if (result) {
         cache.set(cacheKey, result);
         return { commentary: result, source: "gemini" };
       }
     } catch (error) {
-      console.warn(`[gemini] attempt ${attempt + 1} failed:`, describeError(error));
+      console.warn(`[gemini] ${model} failed:`, describeError(error));
     }
   }
   return { commentary: fallbackFor(plays, stats, mode, verdicts), source: "canned" };

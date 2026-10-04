@@ -1,6 +1,7 @@
 import type { Category, Transaction } from "../shared/types";
 import { inferCategory, seedPurchasesForNessie } from "./seed";
 import {
+  NESSIE_ACCOUNT_ID,
   NESSIE_API_KEY,
   NESSIE_BASE_URL,
   nessieConfigured,
@@ -33,9 +34,12 @@ type NessieCustomer = {
 type NessieAccount = {
   _id: string;
   name?: string;
+  nickname?: string;
   officialName?: string;
   type?: string;
   balance?: number;
+  account_number?: string;
+  customer_id?: string;
 };
 
 type NessieMerchant = {
@@ -43,26 +47,47 @@ type NessieMerchant = {
   name?: string;
 };
 
-/** A Nessie purchase. Amounts are NEGATIVE for spending. */
+/**
+ * A Nessie purchase. Amounts are NEGATIVE for spending.
+ *
+ * Field names are snake_case on the wire and they do NOT match the write schema:
+ * reads return `merchant_id` / `purchase_date`, while creates want `purchase_date`
+ * but reject `date` outright. Both shapes are listed so either parses.
+ */
 type NessiePurchase = {
   _id: string;
   amount?: number;
   date?: string;
+  purchase_date?: string;
   description?: string;
   status?: string;
+  medium?: string;
+  merchant_id?: string;
   merchantName?: string;
   merchant?: string | NessieRef;
   payee?: string;
   type?: string;
+  payer_id?: string;
 };
 
 // --- tiny in-memory caches (no database, per spec) --------------------------
 const merchantNameCache = new Map<string, string>();
+/**
+ * merchant name (lowercased) -> merchant id. Needed because GET /merchants is
+ * unusable on this API, so we cannot look a merchant up by name after a restart.
+ * Rebuilt as we create merchants; the account's sparse-check keeps this from
+ * growing without bound.
+ */
+const merchantIdByName = new Map<string, string>();
 let customerIdCache: string | null = null;
 let accountIdCache: string | null = null;
 
 /** Set once we hit a 401 so we stop hammering a dead key for the whole session. */
 let keyRejected = false;
+
+/** Backoff between seeding attempts -- see seedAccountIfSparse(). */
+const SEED_RETRY_MS = 60_000;
+let lastSeedAttemptMs = 0;
 
 async function nessieFetch<T>(
   path: string,
@@ -83,9 +108,27 @@ async function nessieFetch<T>(
     signal: AbortSignal.timeout(timeoutMs),
   });
 
-  if (response.status === 401 || response.status === 403) {
+  // Only a 401 means the key is actually wrong. Nessie's edge returns 403 (and
+  // 502/503) transiently under load -- we hit all three in one afternoon -- and
+  // the old code latched `keyRejected` on 403 too, which disabled the entire
+  // integration for the rest of the process. That presents as "the key doesn't
+  // work" even though the key is fine, so only 401 is treated as fatal.
+  if (response.status === 401) {
     keyRejected = true;
-    throw new Error(`Nessie rejected the API key (HTTP ${response.status})`);
+    throw new Error(`Nessie rejected the API key (HTTP 401)`);
+  }
+  if (response.status === 403) {
+    // Two very different things produce this and they need different fixes.
+    // POST /accounts is NOT a real route: the API is mounted under
+    // /customers/{id}/accounts, and hitting /accounts lands on a different
+    // backend that answers 403 "Missing Authentication Token" — which looks
+    // exactly like a bad key. Other 403s are genuine rate limits.
+    const wrongMount = path === "/accounts" && (init.method ?? "GET") !== "GET";
+    throw new Error(
+      wrongMount
+        ? `Nessie 403 on POST /accounts — that path does not exist. Accounts are created at POST /customers/{customerId}/accounts.`
+        : `Nessie throttled ${path} (HTTP 403) — rate limited, will retry later.`,
+    );
   }
   if (!response.ok) {
     const body = await response.text().catch(() => "");
@@ -94,7 +137,14 @@ async function nessieFetch<T>(
 
   // DELETE returns no content; everything else here returns JSON.
   const text = await response.text();
-  return (text ? JSON.parse(text) : null) as T;
+  const parsed = text ? JSON.parse(text) : null;
+  // Write endpoints do NOT return the created object at the top level -- they
+  // wrap it: { code: 201, message: "Account created", objectCreated: {...} }.
+  // Unwrap here so every call site can just read `._id` off the result.
+  if (parsed && typeof parsed === "object" && "objectCreated" in parsed) {
+    return (parsed as { objectCreated: T }).objectCreated;
+  }
+  return parsed as T;
 }
 // --- customers / accounts / merchants -------------------------------------
 
@@ -115,16 +165,22 @@ async function getOrCreateCustomer(): Promise<NessieCustomer> {
     method: "POST",
     body: JSON.stringify({
       name: "Checkout Critic",
-      address: {
-        street1: "1 Commentary Way",
-        city: "Ann Arbor",
-        state: "MI",
-        zip: "48104",
-      },
+      address: demoAddress("Commentary Way"),
     }),
   });
   customerIdCache = created._id;
   return created;
+}
+
+/** All accounts belonging to a customer, cached after the first fetch. */
+let accountCache: NessieAccount[] = [];
+
+async function listAccounts(customerId: string): Promise<NessieAccount[]> {
+  if (accountCache.length > 0) return accountCache;
+  accountCache = await nessieFetch<NessieAccount[]>(
+    `/customers/${customerId}/accounts`,
+  );
+  return accountCache;
 }
 
 async function getOrCreateAccount(
@@ -132,42 +188,87 @@ async function getOrCreateAccount(
 ): Promise<NessieAccount> {
   if (accountIdCache) return { _id: accountIdCache };
 
-  const accounts = await nessieFetch<NessieAccount[]>(
-    `/customers/${customerId}/accounts`,
-  );
+  // Optional override, mostly useful for pointing at a hand-made account in the
+  // Nessie console. Not required -- we can bootstrap our own now.
+  if (NESSIE_ACCOUNT_ID) {
+    accountIdCache = NESSIE_ACCOUNT_ID;
+    try {
+      const pinned = await nessieFetch<NessieAccount>(
+        `/accounts/${NESSIE_ACCOUNT_ID}`,
+      );
+      return pinned;
+    } catch {
+      return { _id: NESSIE_ACCOUNT_ID };
+    }
+  }
+
+  const accounts = await listAccounts(customerId);
   if (accounts.length > 0) {
     accountIdCache = accounts[0]._id;
     return accounts[0];
   }
 
-  const created = await nessieFetch<NessieAccount>("/accounts", {
-    method: "POST",
-    body: JSON.stringify({
-      customerId,
-      name: "PLAYER CHECKING",
-      officialName: "Checkout Critic Checking",
-      type: "Standard",
-      balance: 1240.0,
-    }),
-  });
+  // DOC ADAPTATION: accounts are created UNDER the customer --
+  // POST /customers/{customerId}/accounts -- NOT at POST /accounts. The latter
+  // is not merely discouraged, it is routed to a different backend and always
+  // answers 403 "Missing Authentication Token", which reads exactly like a bad
+  // API key and sent us chasing the wrong problem for hours.
+  // `type` is a closed enum: 'Credit Card' | 'Savings' | 'Checking'. `rewards`
+  // is required even though we don't use it.
+  const created = await nessieFetch<NessieAccount>(
+    `/customers/${customerId}/accounts`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: "CC CHECKING",
+        nickname: "Checkout Critic",
+        officialName: "Checkout Critic Checking",
+        type: "Checking",
+        balance: 1240.0,
+        rewards: 0,
+      }),
+    },
+  );
   accountIdCache = created._id;
+  accountCache = [created];
   return created;
 }
 
 /**
- * Resolve merchant ids to display names. Cached in a Map so a 200-purchase
- * account costs one merchants call, not 200.
+ * Resolve merchant ids to display names.
+ *
+ * NOTE: we deliberately do NOT use GET /merchants (the list endpoint). It
+ * validates EVERY merchant record on the key and 400s the whole response if
+ * any one of them is malformed -- and a single address-less merchant poisons it
+ * permanently. GET /merchants/{id} is unaffected, so we resolve the handful of
+ * ids the current page actually references, cached by id.
  */
-async function loadMerchantNames(): Promise<Map<string, string>> {
-  if (merchantNameCache.size > 0) return merchantNameCache;
-  const merchants = await nessieFetch<NessieMerchant[]>("/merchants");
-  for (const m of merchants) {
-    if (m._id && m.name) merchantNameCache.set(m._id, m.name);
+async function resolveMerchantNames(
+  purchases: NessiePurchase[],
+): Promise<Map<string, string>> {
+  const ids = new Set<string>();
+  for (const p of purchases) {
+    const id = extractMerchantId(p);
+    if (id && !merchantNameCache.has(id)) ids.add(id);
   }
+  await Promise.all(
+    [...ids].map(async (id) => {
+      try {
+        const m = await nessieFetch<NessieMerchant>(`/merchants/${id}`);
+        if (m?.name) merchantNameCache.set(id, m.name);
+      } catch {
+        // A merchant we can't read is not fatal; the purchase still shows its
+        // description. Never let one bad id take down the whole read path.
+      }
+    }),
+  );
   return merchantNameCache;
 }
 
 function extractMerchantId(purchase: NessiePurchase): string | null {
+  // The live API returns a flat snake_case `merchant_id`; older responses
+  // embedded a `merchant` object or string. Accept all three.
+  if (typeof purchase.merchant_id === "string") return purchase.merchant_id;
   if (typeof purchase.merchant === "string") return purchase.merchant;
   if (purchase.merchant && typeof purchase.merchant === "object") {
     return purchase.merchant._id ?? null;
@@ -203,7 +304,8 @@ function normalizePurchase(
     merchant,
     amount,
     category: isTransfer ? "transfer" : (inferCategory(merchant) as Category),
-    date: purchase.date ?? new Date().toISOString(),
+    // Live API returns `purchase_date`; `date` is the legacy shape.
+    date: purchase.purchase_date ?? purchase.date ?? new Date().toISOString(),
     description: purchase.description,
   };
 }
@@ -212,21 +314,85 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// --- write helpers -----------------------------------------------------------
+// Nessie's WRITE schema has drifted from what the READ path returns. See the
+// notes on createPurchase()/getOrCreateAccount() for the verified field names.
+// Merchant addresses moved from street1 to street_number/street_name.
+
+/** Merchant/customer addresses moved from street1 to street_number/street_name. */
+function demoAddress(streetName: string) {
+  return {
+    street_number: "1",
+    street_name: streetName,
+    city: "Ann Arbor",
+    state: "MI",
+    zip: "48104",
+  };
+}
+
+async function createMerchant(
+  name: string,
+  description: string,
+): Promise<NessieMerchant> {
+  return nessieFetch<NessieMerchant>("/merchants", {
+    method: "POST",
+    body: JSON.stringify({ name, address: demoAddress("Commerce St"), description }),
+  });
+}
+
+/**
+ * Create a purchase on an account.
+ *
+ * DOC ADAPTATION, all three verified against the live API 2026-10-03:
+ *  - `merchant_id` is snake_case and required.
+ *  - `medium` is a closed enum: 'balance' | 'rewards'. (Lowercase.)
+ *  - `status` is a closed enum: 'pending' | 'cancelled' | 'completed'. (Lowercase.)
+ *  - The date field is `purchase_date`. Sending `date` is rejected as an extra
+ *    field -- and omitting both produces a purchase the READ endpoint then
+ *    refuses to return, because the whole list fails to deserialize on it.
+ *    So `purchase_date` is mandatory in practice even though it looks optional.
+ */
+const PURCHASE_MEDIUM = "balance";
+const PURCHASE_STATUS = "completed";
+
+async function createPurchase(
+  accountId: string,
+  base: { merchant_id: string; amount: number; description: string; purchase_date: string },
+): Promise<NessiePurchase> {
+  return nessieFetch<NessiePurchase>(`/accounts/${accountId}/purchases`, {
+    method: "POST",
+    body: JSON.stringify({
+      ...base,
+      medium: PURCHASE_MEDIUM,
+      status: PURCHASE_STATUS,
+    }),
+  });
+}
+
 /**
  * Push the seed purchases into a real Nessie account when it is too sparse.
  * This matters for the sponsor judges: the data genuinely lives in Nessie.
  */
 async function seedAccountIfSparse(accountId: string): Promise<void> {
+  // Nessie's public demo API is aggressively rate-limited and answers a
+  // throttled request with misleading errors (403 "Missing Authentication
+  // Token", plain 400s). Re-attempting on EVERY /api/transactions turned one
+  // transient blip into a permanent lockout, so back off between attempts.
+  // Seeded data persists server-side, so there is nothing to gain by retrying
+  // faster than this anyway.
+  if (Date.now() - lastSeedAttemptMs < SEED_RETRY_MS) return;
+  lastSeedAttemptMs = Date.now();
+
   const existing = await nessieFetch<NessiePurchase[]>(
     `/accounts/${accountId}/purchases`,
   );
   if (existing.length >= SEED_THRESHOLD) return;
 
-  const merchants = await nessieFetch<NessieMerchant[]>("/merchants");
-  const byName = new Map<string, string>();
-  for (const m of merchants) {
-    if (m.name) byName.set(m.name.toLowerCase(), m._id);
-  }
+  // No merchant listing here either -- GET /merchants 400s if any record on the
+  // key is malformed, which would fail the whole seed. merchantIdByName is the
+  // dedupe map; combined with the sparse check above, each merchant is created
+  // roughly once per account rather than once per process.
+  const byName = merchantIdByName;
 
   for (const seed of seedPurchasesForNessie()) {
     let merchantId = byName.get(seed.merchant.toLowerCase());
@@ -234,33 +400,20 @@ async function seedAccountIfSparse(accountId: string): Promise<void> {
     // Unknown merchant: create one so the purchase has a real referent.
     if (!merchantId) {
       const slug = seed.merchant.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const created = await nessieFetch<NessieMerchant>("/merchants", {
-        method: "POST",
-        body: JSON.stringify({
-          name: seed.merchant,
-          address: {
-            street1: "1 Commerce St",
-            city: "Ann Arbor",
-            state: "MI",
-            zip: "48104",
-          },
-          description: `${slug} merchant created by Wallet Sports Desk`,
-        }),
-      });
+      const created = await createMerchant(
+        seed.merchant,
+        `${slug} merchant created by Checkout Critics`,
+      );
       merchantId = created._id;
       byName.set(seed.merchant.toLowerCase(), merchantId);
       merchantNameCache.set(merchantId, seed.merchant);
     }
 
-    await nessieFetch<NessiePurchase>(`/accounts/${accountId}/purchases`, {
-      method: "POST",
-      body: JSON.stringify({
-        merchantId,
-        amount: seed.amount, // negative = spending
-        date: seed.date,
-        description: seed.description,
-        status: "COMPLETED",
-      }),
+    await createPurchase(accountId, {
+      merchant_id: merchantId,
+      amount: seed.amount, // negative = spending
+      description: seed.description,
+      purchase_date: seed.date,
     });
   }
 }
@@ -293,44 +446,27 @@ export async function createNessiePurchase(input: {
     const customer = await getOrCreateCustomer();
     const account = await getOrCreateAccount(customer._id);
 
-    // Find or create the merchant.
-    const merchants = await nessieFetch<NessieMerchant[]>("/merchants");
-    let merchantId = merchants.find(
-      (m) => (m.name || "").toLowerCase() === input.merchant.toLowerCase(),
-    )?._id;
+    // Find or create the merchant. We can't list merchants (see
+    // resolveMerchantNames), so dedupe against the in-process id cache only.
+    let merchantId = merchantIdByName.get(input.merchant.toLowerCase());
 
     if (!merchantId) {
       const slug = input.merchant.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const created = await nessieFetch<NessieMerchant>("/merchants", {
-        method: "POST",
-        body: JSON.stringify({
-          name: input.merchant,
-          address: {
-            street1: "1 Commerce St",
-            city: "Ann Arbor",
-            state: "MI",
-            zip: "48104",
-          },
-          description: `${slug} merchant created by Wallet Sports Desk`,
-        }),
-      });
+      const created = await createMerchant(
+        input.merchant,
+        `${slug} merchant created by Checkout Critics`,
+      );
       merchantId = created._id;
       merchantNameCache.set(merchantId, input.merchant);
+      merchantIdByName.set(input.merchant.toLowerCase(), merchantId);
     }
 
-    const created = await nessieFetch<NessiePurchase>(
-      `/accounts/${account._id}/purchases`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          merchantId,
-          amount: -Math.abs(input.amount), // Nessie: negative = spending
-          date: now,
-          description: input.description || `Impulse buy at ${input.merchant}`,
-          status: "COMPLETED",
-        }),
-      },
-    );
+    const created = await createPurchase(account._id, {
+      merchant_id: merchantId,
+      amount: -Math.abs(input.amount), // Nessie: negative = spending
+      description: input.description || `Impulse buy at ${input.merchant}`,
+      purchase_date: now,
+    });
 
     return {
       transaction: {
@@ -379,10 +515,33 @@ export async function fetchNessieTransactions(): Promise<NessieFetchResult> {
       console.warn("[nessie] seeding skipped:", describe(error));
     }
 
-    const merchantNames = await loadMerchantNames();
-    const purchases = await nessieFetch<NessiePurchase[]>(
-      `/accounts/${account._id}/purchases`,
-    );
+    // Read first, then resolve only the merchant ids that page references.
+    // (resolveMerchantNames needs the purchases, so it cannot run before this.)
+    const candidates = await listAccounts(customer._id);
+    let purchases: NessiePurchase[] | null = null;
+    let used: NessieAccount = account;
+    for (const candidate of candidates.length > 0 ? candidates : [account]) {
+      try {
+        purchases = await nessieFetch<NessiePurchase[]>(
+          `/accounts/${candidate._id}/purchases`,
+        );
+        used = candidate;
+        break;
+      } catch (error) {
+        console.warn(
+          `[nessie] account ${candidate._id} unreadable, trying next:`,
+          describe(error),
+        );
+      }
+    }
+    if (!purchases) throw new Error("no readable Nessie account on this key");
+
+    const merchantNames = await resolveMerchantNames(purchases);
+
+    // A single malformed purchase poisons the WHOLE list: GET purchases 400s
+    // with "purchase_date field required" rather than skipping the bad row. So
+    // walking the accounts above is what keeps one bad account from forcing a
+    // fallback to seed data.
 
     const transactions = purchases
       .map((p) => normalizePurchase(p, merchantNames))
@@ -391,7 +550,8 @@ export async function fetchNessieTransactions(): Promise<NessieFetchResult> {
 
     return {
       transactions,
-      accountLabel: account.name || account.officialName || "NESSIE CHECKING",
+      accountLabel:
+        used.name || used.nickname || used.officialName || "NESSIE CHECKING",
       error: null,
     };
   } catch (error) {
@@ -399,6 +559,7 @@ export async function fetchNessieTransactions(): Promise<NessieFetchResult> {
     // Reset caches so a later request can retry cleanly if the key was fixed.
     customerIdCache = null;
     accountIdCache = null;
+    accountCache = [];
     return {
       transactions: null,
       accountLabel: "DEMO CHECKING",

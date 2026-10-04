@@ -14,10 +14,26 @@ export const NESSIE_BASE_URL =
 export const NESSIE_API_KEY = process.env.NESSIE_API_KEY?.trim() || "";
 
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() || "";
-// DOC ADAPTATION: spec guessed a "flash" model. Current stable flash tier is
-// gemini-3.8-flash (verified against the Gemini model list, 2026-10-03).
+
+// MODEL TIER. While developing, leave this on a *-flash-lite model: it is far
+// cheaper and plenty fast for the booth's short JSON scripts. Swap in the big
+// model right before you demo (see .env.example for the switch).
+// Verified against this key 2026-10-03. Note gemini-2.5-flash-lite is retired
+// for new users and 404s; gemini-3.8-flash-lite does not exist.
 export const GEMINI_MODEL =
-  process.env.GEMINI_MODEL?.trim() || "gemini-3.8-flash";
+  process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite";
+
+/**
+ * Optional: pin a specific Nessie account id.
+ *
+ * The public demo host refuses POST /accounts outright -- 403 "Missing
+ * Authentication Token" under ?key=, X-API-Key, x-api-key and Bearer alike --
+ * while happily creating customers and merchants. So the server cannot bootstrap
+ * its own account. Create one account in the Nessie console for the customer
+ * below and paste its id here; without this we try to create one, fail, and
+ * serve demo data instead.
+ */
+export const NESSIE_ACCOUNT_ID = process.env.NESSIE_ACCOUNT_ID?.trim() || "";
 
 export const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY?.trim() || "";
 export const ELEVENLABS_VOICE_PBP =
