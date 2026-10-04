@@ -1,8 +1,9 @@
 import type { Speaker } from "../../shared/types";
 
 /**
- * The broadcast booth: two commentator cards. The active speaker's card glows
- * and bounces, and the live caption strip sits underneath like subtitles.
+ * The broadcast booth: two commentator cards. The active speaker's card lights
+ * up, a level meter runs under their name, and the live caption strip sits
+ * underneath like subtitles.
  */
 
 const COMMENTATORS: Array<{
@@ -10,21 +11,24 @@ const COMMENTATORS: Array<{
   name: string;
   role: string;
   avatar: string;
-  accent: string;
+  text: string;
+  frame: string;
 }> = [
   {
     speaker: "PBP",
-    name: "BIG MIKE DONOVAN",
-    role: "PLAY-BY-PLAY",
+    name: "Big Mike Donovan",
+    role: "Play-by-play",
     avatar: "\u{1F3A3}",
-    accent: "text-gold ring-gold/50",
+    text: "text-gold",
+    frame: "bg-gold/10 ring-gold/40",
   },
   {
     speaker: "COLOR",
-    name: "LINDA PARK",
-    role: "COLOR",
+    name: "Linda Park",
+    role: "Color",
     avatar: "\u{1F4CA}",
-    accent: "text-cyan ring-cyan/50",
+    text: "text-cyan",
+    frame: "bg-cyan/10 ring-cyan/40",
   },
 ];
 
@@ -39,48 +43,66 @@ export function Booth({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 gap-3 sm:gap-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
         {COMMENTATORS.map((c) => {
           const isActive = activeSpeaker === c.speaker;
           return (
             <div
               key={c.speaker}
-              className={`broadcast relative rounded-lg border-2 bg-panel/80 px-3 py-4 text-center transition-all duration-200 sm:px-6 sm:py-6 ${
+              className={`broadcast relative px-3 py-4 text-center ring-1 ring-inset transition-all duration-200 sm:px-6 sm:py-6 ${
                 isActive
-                  ? `animate-glow animate-booth border-transparent ring-2 ${c.accent}`
-                  : "border-white/10 opacity-60"
+                  ? `animate-booth animate-glow ring-2 ${c.frame}`
+                  : "bg-white/[0.02] ring-white/10 opacity-55"
               }`}
             >
-              <div className="text-3xl sm:text-5xl">{c.avatar}</div>
+              {/* On-air lamp */}
+              <span
+                aria-hidden
+                className={`absolute right-2 top-2 h-2.5 w-2.5 sm:right-3 sm:top-3 ${
+                  isActive ? "animate-blink bg-red" : "bg-white/15"
+                }`}
+              />
+
+              <span className="text-3xl sm:text-5xl">{c.avatar}</span>
               <div
-                className={`mt-1 text-lg leading-tight sm:text-3xl ${isActive ? c.accent.split(" ")[0] : "text-white/70"}`}
+                className={`mt-1 text-lg leading-tight sm:text-3xl ${
+                  isActive ? c.text : "text-white/70"
+                }`}
               >
                 {c.name}
               </div>
               <div className="text-[9px] tracking-[0.25em] text-white/40 sm:text-[11px]">
                 {c.role}
               </div>
-              {/* On-air lamp */}
+
+              {/* Level meter: only the speaker holding the mic. */}
               <div
-                className={`absolute right-2 top-2 h-2.5 w-2.5 rounded-full sm:right-3 sm:top-3 ${
-                  isActive ? "animate-blink bg-red" : "bg-white/15"
-                }`}
-              />
+                aria-hidden
+                className={`mt-2 flex h-4 items-end justify-center gap-[3px] ${c.text}`}
+              >
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <span
+                    key={i}
+                    className={`w-[3px] bg-current ${isActive ? "eq-bar" : "h-1 opacity-20"}`}
+                    style={isActive ? { animationDelay: `${i * 110}ms` } : undefined}
+                  />
+                ))}
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* Caption strip */}
-      <div className="min-h-[76px] rounded-lg border-2 border-white/10 bg-black/60 px-4 py-3 text-center sm:min-h-[92px] sm:px-8 sm:py-5">
+      {/* Caption strip: subtitles, not a card. */}
+      <div className="min-h-[76px] border-l-4 border-gold bg-black/70 px-4 py-3 text-center sm:min-h-[92px] sm:px-8 sm:py-5">
         <p className="broadcast text-lg leading-snug text-white/95 sm:text-3xl">
-          {caption || "..."}
+          {caption || "\u2026"}
         </p>
       </div>
 
       {browserVoice && (
-        <p className="text-center text-[10px] text-white/35">
-          using browser voices (elevenlabs unavailable)
+        <p className="broadcast text-center text-[10px] tracking-[0.2em] text-white/30">
+          browser voices &mdash; elevenlabs unavailable
         </p>
       )}
     </section>

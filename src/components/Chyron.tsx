@@ -1,18 +1,25 @@
 /**
  * Lower-third chyron: the TV broadcast graphic that slides in from the left
  * for each segment. Re-mounts on change so the animation replays every time.
+ *
+ * The whole graphic is one slanted parallelogram, which is what a real lower
+ * third actually is -- not a rectangle with a corner taken off it.
  */
 export function Chyron({ text }: { text: string | null }) {
-  if (!text) return <div className="h-9" aria-hidden />;
+  if (!text) return <div className="h-10" aria-hidden />;
 
   return (
-    <div className="flex h-9 items-center overflow-hidden" role="status">
+    <div className="flex h-10 items-stretch" role="status">
       <div
         key={text}
-        className="animate-chyron flex items-center gap-2 bg-gradient-to-r from-gold to-gold-dim px-4 py-1 shadow-lg"
+        className="animate-chyron flag flex items-stretch pr-4 sm:pr-6"
       >
-        <span className="broadcast text-xs text-studio/70">WSD</span>
-        <span className="broadcast text-sm text-studio sm:text-lg">{text}</span>
+        <span className="broadcast flex shrink-0 items-center bg-gold px-4 text-[10px] tracking-[0.3em] text-studio sm:px-5 sm:text-xs">
+          CC
+        </span>
+        <span className="broadcast flex min-w-0 items-center truncate bg-black/85 pl-4 pr-3 text-sm text-white sm:pl-5 sm:text-lg">
+          {text}
+        </span>
       </div>
     </div>
   );

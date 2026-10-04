@@ -51,18 +51,20 @@ body {
   animation: tick 420ms ease-out;
 }
 
-/* --- chyron slide-in from the left ---------------------------------- */
+/* --- chyron slide-in from the left ----------------------------------
+   No skew here any more: the graphic itself is now a slanted parallelogram,
+   so skewing it too would double the angle. */
 @keyframes chyron-in {
   0% {
-    transform: translateX(-110%) skewX(-8deg);
+    transform: translateX(-110%);
     opacity: 0;
   }
   60% {
-    transform: translateX(6px) skewX(-8deg);
+    transform: translateX(6px);
     opacity: 1;
   }
   100% {
-    transform: translateX(0) skewX(-8deg);
+    transform: translateX(0);
     opacity: 1;
   }
 }
@@ -70,18 +72,17 @@ body {
   animation: chyron-in 520ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
 }
 
-/* --- active commentator card glow + bounce -------------------------- */
-@keyframes booth-active {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
+/* --- active commentator card: a quick lift, not an endless bounce ---- */
+@keyframes booth-in {
+  from {
+    transform: translateY(4px);
   }
-  50% {
-    transform: translateY(-7px) scale(1.03);
+  to {
+    transform: translateY(0);
   }
 }
 .animate-booth {
-  animation: booth-active 900ms ease-in-out infinite;
+  animation: booth-in 220ms ease-out both;
 }
 
 @keyframes glow-pulse {
@@ -233,6 +234,107 @@ body {
   animation: fade-in 260ms ease-out both;
 }
 
+/* --- broadcast geometry --------------------------------------------------
+   The previous pass chopped two corners off every single box. It was wrong for
+   two reasons: it applied one decoration uniformly, so it read as a theme
+   rather than as hierarchy, and a corner nick is not a shape that appears
+   anywhere in a real broadcast package.
+
+   The rule now: DATA IS FLAT. Panels, rows, cells and buttons are plain
+   rectangles separated by hairlines, the way a standings table or a stats
+   panel is built. ANGLES MEAN SIGNAL. A slanted "speed" cut is reserved for
+   the handful of things that are telling you something right now -- the live
+   lamp, the period chip, the lower-third slug, the primary call to action.
+   Two shapes, each with a job, instead of one shape doing everything.
+   ---------------------------------------------------------------------- */
+
+/* The broadcast "speed" cut: a parallelogram leaning right. Classic lower
+   third / motorsport timing graphic. Only ever on signal elements. */
+.flag {
+  clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+}
+
+/* The mirror cut, for the trailing edge of a two-part bar. */
+.flag-end {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 14px 100%);
+}
+
+/* Score figures. Tabular so digits don't jitter as the balance ticks, and
+   slashed-zero where the face supports it -- the scoreboard/motorsport tell
+   that separates a number from a letter at a glance. */
+.num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: 0.01em;
+}
+
+/* Chevron: the most borrowed mark in sport. Used as a possession marker and
+   as a separator instead of the middot everyone uses. */
+.chev {
+  font-family: var(--font-display);
+  color: var(--color-gold);
+  letter-spacing: -0.08em;
+}
+
+/* A stat chip: flat, hairline-ruled, no fill. Reads as data, not as a button. */
+.chip {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* --- studio texture: scanlines -------------------------------------- */
+/* Sits above the layout but below the poster (z-50) and the network bug
+   (z-40), so it reads as the surface of the screen rather than as content.
+   No vignette: darkening by distance from centre made everything that
+   wasn't dead-middle look muddy, which is a screen effect, not a camera one. */
+.studio-texture::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.028) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+.studio-texture::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 31;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(77, 216, 255, 0.05), transparent 38%);
+}
+
+/* --- on-air level meter --------------------------------------------- */
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.eq-bar {
+  height: 1rem;
+  transform-origin: bottom;
+  animation: eq 640ms ease-in-out infinite;
+}
+
+/* --- hairline rule used to split scoreboard blocks ------------------- */
+.hairline-x {
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.22),
+    transparent
+  );
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-shake,
   .animate-tick,
@@ -242,7 +344,9 @@ body {
   .animate-verdict,
   .animate-flip,
   .animate-poster,
-  .animate-fade {
+  .animate-fade,
+  .animate-blink,
+  .eq-bar {
     animation: none;
   }
 }

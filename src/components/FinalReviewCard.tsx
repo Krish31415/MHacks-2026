@@ -18,14 +18,15 @@ export function FinalReviewCard({
   const { PBP, COLOR } = review.scores;
 
   return (
-    <div className="animate-fade fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-      <div className="animate-poster w-full max-w-xl rounded-xl border-4 border-gold bg-gradient-to-b from-studio-2 to-studio p-5 text-center shadow-2xl sm:p-8">
+    <div className="animate-fade fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+      <div className="animate-poster w-full max-w-xl border-4 border-gold bg-studio-2 p-5 text-center sm:p-8">
         <div className="broadcast text-[10px] tracking-[0.45em] text-gold/70 sm:text-xs">
-          CHECKOUT CRITICS
+          Checkout Critics
         </div>
         <h2 className="broadcast mt-1 text-4xl leading-none text-gold sm:text-6xl">
           Final Review
         </h2>
+        <div className="hairline-x mx-auto mt-3 h-px w-2/3" aria-hidden />
 
         <div className="mt-5 flex items-end justify-center gap-8 sm:gap-14">
           <FinalScore name="MIKE" score={PBP} tone="text-gold" delay="0ms" />
@@ -36,14 +37,14 @@ export function FinalReviewCard({
           &ldquo;{review.pullQuote}&rdquo;
         </blockquote>
 
-        <div className="broadcast mt-4 text-[10px] text-white/40 sm:text-xs">
-          FINAL SCORE ${stats.currentBalance.toFixed(2)} &bull; {stats.playsCount} PLAYS REVIEWED
+        <div className="broadcast mt-4 text-[10px] tracking-[0.15em] text-white/40 sm:text-xs">
+          Final score ${stats.currentBalance.toFixed(2)} &bull; {stats.playsCount} plays reviewed
         </div>
 
         <button
           type="button"
           onClick={onStartOver}
-          className="broadcast mt-5 w-full rounded-lg bg-gradient-to-b from-gold to-gold-dim px-4 py-3 text-xl text-studio transition hover:brightness-110 active:scale-[0.99] sm:text-2xl"
+          className="broadcast flag mt-6 w-full bg-gold py-3 text-xl leading-none tracking-widest text-studio transition hover:brightness-110 active:translate-y-px sm:text-2xl"
         >
           Start Over
         </button>

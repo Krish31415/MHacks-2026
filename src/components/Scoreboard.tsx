@@ -1,8 +1,13 @@
 import type { BroadcastPhase, Stats } from "../../shared/types";
 
 /**
- * The top scoreboard: YOU vs THE BANK, with a fake game clock and a
- * quarter indicator. The balance ticks down as plays land.
+ * The top scoreboard: YOU vs THE BANK, with a fake game clock and a period
+ * indicator. The balance ticks down as plays land.
+ *
+ * Built as a real score bug rather than a row of cards: two flat team cells
+ * split by a slanted period block, hairline rules between them, and a thin stat
+ * strip underneath. CBS rebuilt theirs bigger and more opaque in 2025 because
+ * readable dense data beats decoration -- that is the brief here.
  */
 
 const PHASE_LABEL: Record<BroadcastPhase, string> = {
@@ -26,52 +31,75 @@ export function Scoreboard({
   dayCount: number;
 }) {
   return (
-    <header className="border-b-4 border-gold/70 bg-gradient-to-b from-studio-2 to-studio">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6">
-        {/* YOU */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
-          <div className="shrink-0 rounded bg-cyan/15 px-2 py-1 text-cyan ring-1 ring-cyan/40">
-            <div className="broadcast text-[10px] leading-none tracking-widest sm:text-xs">
-              YOU
-            </div>
+    <header className="border-b-2 border-gold/60 bg-studio-2/95">
+      <div className="mx-auto max-w-6xl px-2 sm:px-4">
+        {/* The bug proper: your balance, the period, what you've paid out. */}
+        <div className="flex items-stretch">
+          <div className="flex min-w-0 flex-1 items-center gap-2 border-r border-white/10 py-2 pr-2 sm:gap-3 sm:pr-3">
+            <span className="broadcast shrink-0 text-[10px] leading-none tracking-[0.28em] text-cyan/70">
+              You
+            </span>
+            <span className="num animate-tick truncate text-2xl leading-none text-cyan sm:text-5xl">
+              ${balance.toFixed(2)}
+            </span>
           </div>
-          <div className="broadcast text-3xl leading-none text-cyan tabular-nums sm:text-5xl">
-            ${balance.toFixed(2)}
+
+          {/* The one angled element on screen: the period block. Solid gold so
+              it reads instantly, the way a bug's period chip does. */}
+          <div className="flag flex shrink-0 flex-col items-center justify-center bg-gold px-5 py-1.5 text-studio sm:px-7 sm:py-2">
+            <span className="broadcast text-base leading-none tracking-[0.12em] sm:text-2xl">
+              {PHASE_LABEL[phase]}
+            </span>
+            <span className="broadcast mt-0.5 text-[9px] leading-none tracking-[0.18em] opacity-70">
+              {dayCount}d &middot; {stats.playsCount} pl
+            </span>
+          </div>
+
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 border-l border-white/10 py-2 pl-2 sm:gap-3 sm:pl-3">
+            <span className="num animate-tick truncate text-2xl leading-none text-red sm:text-5xl">
+              ${stats.totalSpent.toFixed(2)}
+            </span>
+            <span className="broadcast shrink-0 text-[10px] leading-none tracking-[0.28em] text-red/70">
+              The Bank
+            </span>
           </div>
         </div>
 
-        {/* Game clock + period */}
-        <div className="flex shrink-0 flex-col items-center">
-          <div className="broadcast rounded bg-gold px-3 py-0.5 text-sm text-studio sm:text-xl">
-            {PHASE_LABEL[phase]}
-          </div>
-          <div className="broadcast mt-0.5 text-[9px] text-white/50 sm:text-[11px]">
-            DAY {dayCount} • {stats.playsCount} PLAYS
-          </div>
-          {/* Critics' average: the running review score for the whole session. */}
-          <div className="mt-1 flex items-center gap-1">
-            <span className="broadcast text-[8px] tracking-widest text-white/45 sm:text-[10px]">
-              CRITICS&apos; AVG
-            </span>
-            <span className="broadcast rounded bg-gold/20 px-1.5 py-0.5 text-[11px] tabular-nums text-gold ring-1 ring-gold/40 sm:text-sm">
-              {stats.criticsAverage == null ? "—" : stats.criticsAverage.toFixed(1)}
-            </span>
-            <span className="broadcast text-[8px] text-white/30 sm:text-[10px]">/10</span>
-          </div>
-        </div>
-
-        {/* THE BANK */}
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-4">
-          <div className="broadcast text-3xl leading-none text-red tabular-nums sm:text-5xl">
-            ${stats.totalSpent.toFixed(2)}
-          </div>
-          <div className="shrink-0 rounded bg-red/15 px-2 py-1 text-red ring-1 ring-red/40">
-            <div className="broadcast text-[10px] leading-none tracking-widest sm:text-xs">
-              THE BANK
-            </div>
-          </div>
+        {/* Sub-strip. Flat, hairline-ruled, chips only where a number needs a
+            container -- never as decoration. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/10 py-1.5">
+          <Stat label="Critics" value={stats.criticsAverage?.toFixed(1) ?? "\u2014"} suffix="/10" accent />
+          <Stat label="Plays" value={String(stats.playsCount)} />
+          <Stat label="Delivery streak" value={`\u00d7${stats.foodDeliveryStreak}`} />
+          <Stat label="Subs" value={String(stats.subscriptionsCount)} />
+          <span className="broadcast ml-auto hidden text-[9px] tracking-[0.2em] text-white/25 sm:block">
+            Checkout Critics
+          </span>
         </div>
       </div>
     </header>
+  );
+}
+
+/** One label/value pair in the sub-strip. */
+function Stat({
+  label,
+  value,
+  suffix,
+  accent,
+}: {
+  label: string;
+  value: string;
+  suffix?: string;
+  accent?: boolean;
+}) {
+  return (
+    <span className="broadcast flex items-baseline gap-1.5 text-[10px] tracking-[0.16em] text-white/45">
+      {label}
+      <span className={`num text-sm leading-none ${accent ? "text-gold" : "text-white/85"}`}>
+        {value}
+      </span>
+      {suffix ? <span className="text-[9px] text-white/30">{suffix}</span> : null}
+    </span>
   );
 }

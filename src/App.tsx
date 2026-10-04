@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { Booth } from "./components/Booth";
 import { Chyron } from "./components/Chyron";
@@ -11,7 +11,24 @@ import { VerdictCard } from "./components/VerdictCard";
 import { useBroadcast } from "./hooks/useBroadcast";
 
 /**
- * Checkout Critics - Wallet Sports Desk.
+ * Screen shake, applied through the Web Animations API.
+ *
+ * This used to be `<div key={shakeKey}>`, which remounted the ENTIRE tree on
+ * every intensity 4-5 line: it wiped whatever you were typing into the
+ * impulse-buy inputs, restarted the ticker, and re-popped every verdict card.
+ * Animating the node directly shakes the same pixels with no remount.
+ */
+const SHAKE_KEYFRAMES: Keyframe[] = [
+  { transform: "translate(0, 0) rotate(0deg)" },
+  { transform: "translate(-6px, 3px) rotate(-0.35deg)" },
+  { transform: "translate(5px, -4px) rotate(0.35deg)" },
+  { transform: "translate(-4px, -2px) rotate(-0.2deg)" },
+  { transform: "translate(3px, 3px) rotate(0.15deg)" },
+  { transform: "translate(0, 0) rotate(0deg)" },
+];
+
+/**
+ * Checkout Critics.
  *
  * Layout is a real TV broadcast: scoreboard on top, booth in the middle, play
  * feed on the side, ticker along the bottom, controls underneath.
@@ -33,6 +50,7 @@ export default function App() {
     caption,
     chyron,
     muted,
+    paused,
     busy,
     browserVoice,
     shakeKey,
@@ -42,10 +60,23 @@ export default function App() {
     callHalftime,
     callPostgame,
     startOver,
+    stopBroadcast,
+    togglePause,
     toggleMute,
     reload,
     hasStarted,
   } = broadcast;
+
+  const shellRef = useRef<HTMLDivElement>(null);
+
+  // Screen shake for intensity 4-5, without remounting anything.
+  useEffect(() => {
+    if (!shakeKey) return;
+    const shell = shellRef.current;
+    if (!shell?.animate) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    shell.animate(SHAKE_KEYFRAMES, { duration: 460, easing: "ease-in-out" });
+  }, [shakeKey]);
 
   // Days spanned by the history, for the fake game clock.
   const dayCount = useMemo(() => {
@@ -58,10 +89,7 @@ export default function App() {
   }, [data]);
 
   return (
-    <div
-      key={shakeKey}
-      className={shakeKey > 0 ? "animate-shake" : ""}
-    >
+    <div ref={shellRef} className="studio-texture">
       <div className="flex min-h-screen flex-col bg-studio">
         <Scoreboard phase={phase} balance={balance} stats={stats} dayCount={dayCount} />
 
@@ -71,16 +99,16 @@ export default function App() {
           {/* Data source badge */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <span
-              className={`broadcast rounded px-2 py-1 text-[10px] ring-1 sm:text-xs ${
+              className={`broadcast px-2 py-1 text-[10px] ring-1 ring-inset sm:text-xs ${
                 source === "nessie"
                   ? "bg-green-500/15 text-green-300 ring-green-400/40"
                   : "bg-amber-500/15 text-amber-300 ring-amber-400/40"
               }`}
             >
-              {source === "nessie" ? "LIVE: Nessie" : "OFFLINE: demo data"}
+              {source === "nessie" ? "Live: Nessie" : "Offline: demo data"}
             </span>
-            <span className="broadcast text-[10px] text-white/40 sm:text-xs">
-              {data?.accountLabel ?? "loading..."} • checkout critics
+            <span className="broadcast text-[10px] tracking-[0.2em] text-white/35 sm:text-xs">
+              {data?.accountLabel ?? "loading\u2026"} &mdash; checkout critics
             </span>
           </div>
 
@@ -127,11 +155,15 @@ export default function App() {
 
               <Controls
                 onStart={startBroadcast}
+                onRestart={startOver}
                 onImpulseBuy={impulseBuy}
                 onHalftime={callHalftime}
                 onPostgame={callPostgame}
+                onTogglePause={togglePause}
                 onToggleMute={toggleMute}
+                onStop={stopBroadcast}
                 muted={muted}
+                paused={paused}
                 busy={busy}
                 hasStarted={hasStarted}
               />
@@ -173,11 +205,11 @@ export default function App() {
 
         {/* TV network bug: the CHECKOUT CRITICS logo in the corner. */}
         <div className="pointer-events-none fixed bottom-3 right-3 z-40 select-none text-right">
-          <div className="broadcast rounded bg-gradient-to-r from-gold to-gold-dim px-3 py-1 text-xs leading-none text-studio shadow-lg sm:text-sm">
+          <div className="broadcast flag bg-gold px-4 py-1 text-xs leading-none text-studio sm:px-5 sm:text-sm">
             Checkout Critics
           </div>
-          <div className="broadcast mt-0.5 text-[8px] tracking-[0.3em] text-white/40">
-            WSD &bull; LIVE
+          <div className="broadcast mt-1 text-[8px] tracking-[0.3em] text-white/40">
+            checkout-critics.tech &bull; LIVE
           </div>
         </div>
 

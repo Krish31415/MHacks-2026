@@ -24,18 +24,18 @@ export function VerdictCard({
   const split = Math.abs(PBP - COLOR) >= 4;
 
   return (
-    <div className="broadcast animate-verdict relative rounded-lg border-2 border-gold/60 bg-gradient-to-b from-panel to-studio px-3 py-2 text-center shadow-lg">
+    <div className="broadcast animate-verdict relative border border-gold/60 bg-panel px-3 py-2 text-center">
       {split && (
-        <span className="animate-blink absolute -top-2 left-1/2 -translate-x-1/2 rounded bg-red px-2 py-0.5 text-[9px] tracking-widest text-white">
-          SPLIT DECISION
-        </span>
+        <div className="flag animate-blink mb-1.5 bg-red px-3 py-0.5 text-[9px] tracking-[0.2em] text-white">
+          Split Decision
+        </div>
       )}
       <div className="truncate text-[11px] text-white/60 sm:text-xs">
         {transaction.merchant} <span className="text-red">-${transaction.amount.toFixed(2)}</span>
       </div>
       <div className="mt-1 flex items-center justify-center gap-3 sm:gap-5">
         <CriticScore name="MIKE" score={PBP} tone="text-gold" delay="0ms" />
-        <span className="text-white/15">|</span>
+        <span className="h-6 w-px bg-white/15" aria-hidden />
         <CriticScore name="LINDA" score={COLOR} tone="text-cyan" delay="260ms" />
       </div>
     </div>
