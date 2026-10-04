@@ -96,6 +96,20 @@ freezes correctly while paused. **If you hear a click with this key present,
 something is broken** — this path cannot produce one. Check that `POST /api/tts`
 returns `200` / `audio/mpeg` and not `503`.
 
+If ElevenLabs *does* fail, the booth now prints **why** under the caption strip
+rather than just "unavailable", because "out of credits" and "wrong voice id"
+look identical on screen and need completely different fixes:
+
+```
+browser voices — elevenlabs unavailable
+out of credits — raise the key quota in ElevenLabs
+```
+
+Worth knowing: ElevenLabs reports an exhausted quota as an HTTP **401** with
+`code: quota_exceeded` — not a 403 or 429 — so don't assume a 401 means a bad
+key. Lines are cached by speaker+text in memory so repeats are free, but the
+cache does **not** survive a server restart.
+
 **Browser voices (fallback, only if ElevenLabs is unavailable).** This path is
 genuinely clicky, and none of it is fixable in JS: `speechSynthesis` has no
 graceful stop, so `cancel()` severs the output stream at whatever amplitude it

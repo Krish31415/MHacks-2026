@@ -53,6 +53,7 @@ export default function App() {
     paused,
     busy,
     browserVoice,
+    ttsReason,
     shakeKey,
     crowd,
     startBroadcast,
@@ -129,6 +130,7 @@ export default function App() {
                 activeSpeaker={activeSpeaker}
                 caption={caption}
                 browserVoice={browserVoice}
+                ttsReason={ttsReason}
               />
 
               {/* Verdict cards reveal after each segment's audio finishes. */}

@@ -22,6 +22,7 @@ import {
 import {
   fetchCommentary,
   fetchSpeech,
+  type SpeechResult,
   fetchTransactions,
   postPurchase,
   resetSession,
@@ -78,6 +79,8 @@ export function useBroadcast() {
   const [busy, setBusy] = useState(false);
   const [segmentsPlayed, setSegmentsPlayed] = useState(0);
   const [browserVoice, setBrowserVoice] = useState(false);
+  /** Why we're on browser voices, shown under the booth. */
+  const [ttsReason, setTtsReason] = useState<string | null>(null);
   // --- verdict system (spec section 11) ---
   const [verdicts, setVerdicts] = useState<Verdict[]>([]);
   const [latestVerdicts, setLatestVerdicts] = useState<Verdict[]>([]);
@@ -377,15 +380,19 @@ export function useBroadcast() {
    *    takes effect on this line instead of the next one.
    */
   const playLine = useCallback(
-    async (line: CommentaryLine, prefetched: Blob | null): Promise<void> => {
+    async (line: CommentaryLine, prefetched: SpeechResult): Promise<void> => {
       if (mutedRef.current) {
         await sleep(spokenMs(line.text));
         return;
       }
 
-      const blob = prefetched ?? (await fetchSpeech(line.speaker, line.text));
+      // Only spend a TTS call if the prefetch didn't already produce audio.
+      const { blob, reason } =
+        prefetched.blob !== null ? prefetched : await fetchSpeech(line.speaker, line.text);
 
       if (blob) {
+        // Recovered (e.g. the quota was topped up mid-show): clear the warning.
+        if (ttsReason) setTtsReason(null);
         const url = URL.createObjectURL(blob);
         try {
           await new Promise<void>((resolve) => {
@@ -446,8 +453,10 @@ export function useBroadcast() {
         return;
       }
 
-      // ElevenLabs unavailable: use the browser's built-in voices instead.
+      // ElevenLabs didn't deliver. Say WHY: "out of credits" and "wrong voice id"
+      // look identical on screen otherwise, and they need different fixes.
       setBrowserVoice(true);
+      setTtsReason(reason ?? "ElevenLabs unavailable");
       await new Promise<void>((resolve) => {
         if (!("speechSynthesis" in window)) {
           void sleep(1200).then(resolve);
@@ -967,6 +976,7 @@ export function useBroadcast() {
     busy,
     paused,
     browserVoice,
+    ttsReason,
     segmentsPlayed,
     hasStarted,
     // effects

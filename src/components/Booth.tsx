@@ -36,10 +36,14 @@ export function Booth({
   activeSpeaker,
   caption,
   browserVoice,
+  ttsReason,
 }: {
   activeSpeaker: Speaker | null;
   caption: string;
   browserVoice: boolean;
+  /** Why the browser voices are in use — an exhausted quota and a bad voice id
+   *  look identical otherwise, and need completely different fixes. */
+  ttsReason?: string | null;
 }) {
   return (
     <section className="flex flex-col gap-3">
@@ -101,9 +105,16 @@ export function Booth({
       </div>
 
       {browserVoice && (
-        <p className="broadcast text-center text-[10px] tracking-[0.2em] text-white/30">
-          browser voices &mdash; elevenlabs unavailable
-        </p>
+        <div className="text-center">
+          <p className="broadcast text-[10px] tracking-[0.2em] text-amber-300/80">
+            browser voices &mdash; elevenlabs unavailable
+          </p>
+          {ttsReason && (
+            <p className="mt-0.5 text-[10px] tracking-wide text-amber-200/50">
+              {ttsReason}
+            </p>
+          )}
+        </div>
       )}
     </section>
   );

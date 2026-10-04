@@ -54,25 +54,53 @@ export async function postPurchase(input: {
   return postJson("/api/purchase", input);
 }
 
+/** Either synthesized mp3 bytes, or a human-readable reason we couldn't. */
+export type SpeechResult = { blob: Blob | null; reason: string | null };
+
+/**
+ * Turn a TTS failure into something a human can act on. The server passes the
+ * upstream message through, but ElevenLabs' quota error is a wall of JSON --
+ * and "browser voices" with no explanation makes an out-of-credits key look
+ * exactly like a misconfigured voice.
+ */
+function describeTtsFailure(status: number, body: unknown): string {
+  const raw =
+    body && typeof body === "object" && "error" in body
+      ? String((body as { error: unknown }).error)
+      : "";
+  if (/quota_exceeded|credits remaining/i.test(raw)) {
+    return "out of credits — raise the key quota in ElevenLabs";
+  }
+  if (status === 401) return "ElevenLabs rejected the API key";
+  if (status === 429) return "ElevenLabs rate limit — try again shortly";
+  if (status === 503) return "ElevenLabs not configured";
+  if (!raw) return `ElevenLabs HTTP ${status}`;
+  return raw.replace(/\s+/g, " ").slice(0, 120);
+}
+
 /**
  * Ask the server for mp3 bytes.
- * Returns null (instead of throwing) whenever TTS is unavailable, which is the
+ * Returns a null blob plus the reason whenever TTS is unavailable, which is the
  * signal for the client to fall back to browser speechSynthesis.
  */
 export async function fetchSpeech(
   speaker: "PBP" | "COLOR",
   text: string,
-): Promise<Blob | null> {
+): Promise<SpeechResult> {
   try {
     const response = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ speaker, text }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      return { blob: null, reason: describeTtsFailure(response.status, detail) };
+    }
     const blob = await response.blob();
-    return blob.size > 0 ? blob : null;
+    if (blob.size === 0) return { blob: null, reason: "ElevenLabs returned no audio" };
+    return { blob, reason: null };
   } catch {
-    return null;
+    return { blob: null, reason: "could not reach the TTS endpoint" };
   }
 }
