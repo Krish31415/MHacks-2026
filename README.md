@@ -234,16 +234,22 @@ Two unavoidable quirks worth knowing before you demo:
 The console is a real transport, not a set of static buttons. Every key acts
 immediately.
 
+The console is **four square keys in one row**, plus Impulse Buy as a full-width
+bar underneath.
+
 | Key | Behaviour |
 |---|---|
 | **Start Broadcast** | Replays your history, 2 plays per segment, halftime spliced in at the midpoint. |
 | **Pause / Resume** | Freezes the line that is on air mid-word (audio element or browser voice) and parks the segment runner. Nothing advances until you resume. |
-| **Stop** | Cuts the air and empties the queue. Emergency brake. |
-| **Restart** | Full reset: clears verdicts, scores, the impulse feed, and reloads the book. |
+| **Mute** | Silent playback — lines still advance on a timed cadence so the visuals stay in sync. |
 | **Halftime** | Jumps straight to a trend report. **Cuts the current line** instead of waiting for the segment to finish. |
 | **Postgame** | Jumps straight to the final review poster. Also cuts the air immediately. |
-| **Mute** | Silent playback — lines still advance on a timed cadence so the visuals stay in sync. |
 | **Impulse Buy** | **Cuts the air.** The booth stops mid-sentence and reacts to this purchase immediately, then resumes the backlog it interrupted. Also writes straight to Nessie. |
+
+There is deliberately no **Restart** and no **Stop**. Restarting is a page
+reload, and Stop was a third way to say what Pause already does instantly. Both
+are still implemented on the hook (`startOver`, `stopBroadcast`) if you ever
+want them back on a keyboard shortcut.
 
 Phase tracking is derived from the segments themselves, so the scoreboard
 reads `Q1` before halftime and `Q2` after it — it never gets stuck on

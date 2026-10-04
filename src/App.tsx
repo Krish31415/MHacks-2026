@@ -61,7 +61,6 @@ export default function App() {
     callHalftime,
     callPostgame,
     startOver,
-    stopBroadcast,
     togglePause,
     toggleMute,
     reload,
@@ -157,13 +156,11 @@ export default function App() {
 
               <Controls
                 onStart={startBroadcast}
-                onRestart={startOver}
                 onImpulseBuy={impulseBuy}
                 onHalftime={callHalftime}
                 onPostgame={callPostgame}
                 onTogglePause={togglePause}
                 onToggleMute={toggleMute}
-                onStop={stopBroadcast}
                 muted={muted}
                 paused={paused}
                 busy={busy}
